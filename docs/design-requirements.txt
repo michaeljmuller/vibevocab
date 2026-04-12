@@ -1,0 +1,38 @@
+
+DESIGN PRINCIPLES
+-----------------
+Prioritize in this order:
+1. Readability — code should be easy to understand without deep framework knowledge.
+2. Maintainability — prefer explicit over magic; avoid patterns that are clever but fragile.
+3. Long-term support — favor mature, stable libraries with large communities over newer
+   alternatives, even if the newer option has technical advantages at the margins.
+
+TECH STACK
+----------
+- Language:   Python
+- Web framework: Flask (mature, stable API, minimal magic, highly readable)
+- ORM:        SQLAlchemy (pairs naturally with PostgreSQL; explicit query control)
+- Migrations: Alembic (standard companion to SQLAlchemy)
+- Database:   PostgreSQL
+
+Flask chosen over FastAPI (younger, async overhead not needed at this scale) and Django
+(opinionated scaffolding conflicts with having a hand-authored schema).
+
+OAuth
+-----
+- Initial provider: Google OAuth.
+- Use an abstraction layer so additional providers can be added with minimal redesign.
+- Apple OAuth to be added later. Initial Apple support may not handle email hiding
+  (user will need to provide their relay address to the admin).
+
+TTS
+---
+- use ElevenLabs
+- create abstraction layer so that other TTS tool can be substituted if necessary with minimal (or no) redesign
+
+Container
+---------
+- Docker containers
+- docker compose orchestration
+- Docker volumes to persist database data to the host
+

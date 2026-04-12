@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Card — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="deck-header">
+    <h1>Edit Card</h1>
+    <div class="subtitle">{{ deck.name }} · {{ deck.source_language }} → {{ deck.target_language }}</div>
+</div>
+
+<form method="POST" class="edit-form">
+
+    <div class="field-group">
+        <h2>{{ deck.source_language }}</h2>
+        <div class="field">
+            <label for="source_expression">Expression</label>
+            <input type="text" id="source_expression" name="source_expression"
+                   value="{{ card.source_expression }}" required autofocus>
+        </div>
+        <div class="field">
+            <label for="source_example">Example sentence</label>
+            <input type="text" id="source_example" name="source_example"
+                   value="{{ card.source_example or '' }}">
+        </div>
+    </div>
+
+    <div class="field-group">
+        <h2>{{ deck.target_language }}</h2>
+        <div class="field">
+            <label for="part_of_speech">Part of speech</label>
+            <select id="part_of_speech" name="part_of_speech">
+                <option value="">—</option>
+                {% for pos in parts_of_speech %}
+                <option value="{{ pos }}" {{ 'selected' if card.part_of_speech == pos }}>{{ pos }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field noun-only">
+            <label for="noun_gender">Noun gender</label>
+            <select id="noun_gender" name="noun_gender">
+                <option value="">—</option>
+                {% for g in noun_genders %}
+                <option value="{{ g }}" {{ 'selected' if card.noun_gender == g }}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field field-checkbox noun-only">
+            <label>
+                <input type="checkbox" name="noun_is_plural" {{ 'checked' if card.noun_is_plural }}>
+                Plural noun
+            </label>
+        </div>
+        <div class="field">
+            <label for="target_expression">Expression</label>
+            <input type="text" id="target_expression" name="target_expression"
+                   value="{{ card.target_expression }}" required>
+        </div>
+        <div class="field">
+            <label for="target_example">Example sentence</label>
+            <input type="text" id="target_example" name="target_example"
+                   value="{{ card.target_example or '' }}">
+        </div>
+    </div>
+
+    <div class="field-group">
+        <div class="field">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="3">{{ card.notes or '' }}</textarea>
+        </div>
+    </div>
+
+    <script>
+        const pos = document.getElementById('part_of_speech');
+        const nounFields = document.querySelectorAll('.noun-only');
+        function updateNounFields() {
+            const isNoun = pos.value === 'noun';
+            nounFields.forEach(el => el.style.display = isNoun ? '' : 'none');
+        }
+        pos.addEventListener('change', updateNounFields);
+        updateNounFields();
+    </script>
+
+    <div class="actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn btn-secondary">Cancel</a>
+    </div>
+
+</form>
+{% endblock %}

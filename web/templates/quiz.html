@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ deck.name }} — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="deck-header">
+    <h1>{{ deck.name }}</h1>
+    <div class="subtitle">{{ deck.source_language }} → {{ deck.target_language }}</div>
+</div>
+
+<div class="quiz-card">
+    <div class="quiz-expression">{{ card.source_expression }}</div>
+    {% if card.source_example %}
+    <div class="quiz-example">"{{ card.source_example }}"</div>
+    {% endif %}
+
+    {% if state == 'front' %}
+
+    <form method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <div class="quiz-form">
+            <input type="text" name="answer" placeholder="Type the answer…" autofocus autocomplete="off">
+            <button type="submit" name="action" value="submit" class="btn btn-primary">Check</button>
+            <button type="submit" name="action" value="flip" class="btn btn-secondary">Show Answer</button>
+            <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-secondary">Edit</a>
+        </div>
+    </form>
+
+    {% elif state == 'needs_article' %}
+
+    <div class="quiz-prompt">Please include the article.</div>
+    <form method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <div class="quiz-form">
+            <input type="text" name="answer" value="{{ answer }}" autofocus autocomplete="off">
+            <button type="submit" name="action" value="submit" class="btn btn-primary">Check</button>
+        </div>
+    </form>
+
+    {% elif state == 'back' %}
+
+    {% if correct is not none %}
+        {% if correct %}
+        <div class="quiz-result correct">✓ Correct!</div>
+        {% else %}
+        <div class="quiz-result incorrect">✗ Incorrect — you typed: "{{ answer }}"</div>
+        {% endif %}
+    {% else %}
+    <div class="quiz-result neutral">Answer revealed.</div>
+    {% endif %}
+
+    <div class="quiz-answer">
+        <div class="label">Answer</div>
+        <div class="value">{{ full_answer }}</div>
+        {% if card.target_example %}
+        <div class="example">"{{ card.target_example }}"</div>
+        {% endif %}
+        {% if card.notes %}
+        <div class="notes">{{ card.notes }}</div>
+        {% endif %}
+    </div>
+
+    <div class="actions">
+        <a id="next-card" href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn btn-primary">Next Card</a>
+        <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-secondary">Edit</a>
+    </div>
+    <script>
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') document.getElementById('next-card').click();
+        });
+    </script>
+
+    {% endif %}
+</div>
+{% endblock %}

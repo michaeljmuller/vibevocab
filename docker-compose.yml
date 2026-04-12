@@ -1,0 +1,57 @@
+services:
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vibevocab}
+      POSTGRES_USER: ${POSTGRES_USER:-vibevocab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
+    volumes:
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibevocab}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: ./web
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-vibevocab}
+      DB_USER: ${POSTGRES_USER:-vibevocab}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
+      APP_USER_EMAIL: ${APP_USER_EMAIL:-admin@example.com}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key}
+    volumes:
+      - ./web:/app
+    ports:
+      - "5001:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ingest:
+    build: ./ingest
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-vibevocab}
+      DB_USER: ${POSTGRES_USER:-vibevocab}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      CSV_PATH: /data/pt-PT-lexicon.csv
+    volumes:
+      - ./pt-PT-lexicon.csv:/data/pt-PT-lexicon.csv:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - ingest
+
+volumes:
+  pgdata:

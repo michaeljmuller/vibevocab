@@ -1,0 +1,77 @@
+VibeVocab — Requirements
+========================
+
+OVERVIEW
+--------
+Web-based vocabulary flashcard app for a small private user base (friends and family).
+
+
+INTERNATIONALIZATION (i18n)
+--------------------------
+- The UI language follows the source language of the active deck.
+- All user-facing text (labels, prompts, messages) must be localizable.
+- Initial supported source language: en-US. A second language will be added for testing.
+
+
+AUTHENTICATION
+--------------
+- Login via Google OAuth. Apple OAuth to be added later.
+- No self-registration; users are added by an admin.
+- Two roles: admin and regular user.
+- Admins can add users and manage roles.
+
+
+DECKS
+-----
+- Each user has private decks; decks are not shared between users.
+- A deck has a name, a source language, and a target language.
+- Languages are specified as BCP 47 locale codes (e.g. en-US, pt-PT, pt-BR, it-IT).]
+- Default source language is en-US.  No default target language.
+
+
+CARDS
+-----
+- A card represents a word or expression.
+- Fields:
+    - Source expression (the word/phrase in the source language)
+    - Source example sentence
+    - Target expression (the answer, in the target language)
+    - Target example sentence
+    - Part of speech: noun, verb, adjective, expression, etc.
+    - Noun gender: masculine / feminine (nouns only)
+    - Noun plural: boolean flag indicating a plural noun (nouns only, default false)
+    - Notes: free-form text (optional)
+- Audio (see AUDIO section) is generated for the target expression and target example.
+
+
+AUDIO
+-----
+- TTS audio is generated via ElevenLabs at card creation time.
+- Two separate clips per card: target expression and target example sentence.
+- Audio is stored in the database.
+- Clips must be small: mono, low bitrate.
+- A user preference controls which clip(s) play during study (expression, example, or both).
+
+
+STUDY MODE
+----------
+- Type-the-answer: the source expression and source example are shown; the user types
+  the target expression.
+- For nouns, the article is required (e.g. "o comboio" not just "comboio"). If the user
+  omits the article, they are prompted to add one rather than marked wrong.
+- After submitting, the user can override the result to mark it correct (e.g. for typos).
+
+
+SPACED REPETITION (SRS)
+-----------------------
+- Uses the SM-2 algorithm.
+- Each card tracks: ease factor, interval (days), repetition count, next review date.
+- Quality score (0–5) is assigned after each review:
+    - Correct + fast response → higher score (well-known)
+    - Correct + slow response → middle score
+    - Wrong → low score
+- Response time is measured from when the card is shown to when the answer is submitted.
+  Scoring accounts for typing time (longer expressions allow more time).
+- A fast correct answer can automatically advance the card to a higher familiarity level.
+- Overriding a wrong answer (typo correction) uses a middle quality score.
+- A clear familiarity indicator is shown per card (e.g. level 1–5 or equivalent).
