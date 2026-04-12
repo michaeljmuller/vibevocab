@@ -17,3 +17,7 @@ Assume docker is already installed; every other dependency should be installed i
 
 - Use plain text (.txt) for all documentation files.
 - Be concise.
+
+## Source control
+
+- Don't add co-authored notes to source control.
