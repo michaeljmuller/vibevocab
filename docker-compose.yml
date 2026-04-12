@@ -27,8 +27,26 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
       APP_USER_EMAIL: ${APP_USER_EMAIL:-admin@example.com}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      SUGGESTION_COUNT: ${SUGGESTION_COUNT:-3}
+      LLM_SUGGESTION_PROMPT: ${LLM_SUGGESTION_PROMPT:-/prompts/example-sentences.txt}
+      LLM_TRANSLATION_PROMPT: ${LLM_TRANSLATION_PROMPT:-/prompts/translate-example.txt}
+      TTS_PROVIDER: ${TTS_PROVIDER:-elevenlabs}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      TTS_VOICE_ID: ${TTS_VOICE_ID:-}
+      TTS_MODEL: ${TTS_MODEL:-eleven_multilingual_v2}
+      TTS_SPEED: ${TTS_SPEED:-1.0}
+      TTS_STABILITY: ${TTS_STABILITY:-0.48}
+      TTS_SIMILARITY: ${TTS_SIMILARITY:-0.75}
+      TTS_STYLE: ${TTS_STYLE:-0.08}
+      TTS_SPEAKER_BOOST: ${TTS_SPEAKER_BOOST:-true}
+      CARD_FLIP_INTER_AUDIO_PAUSE_MS: ${CARD_FLIP_INTER_AUDIO_PAUSE_MS:-1500}
     volumes:
       - ./web:/app
+      - ./prompts:/prompts:ro
     ports:
       - "5001:5000"
     depends_on:

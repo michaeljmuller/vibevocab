@@ -8,7 +8,14 @@
     <div class="subtitle">{{ deck.source_language }} → {{ deck.target_language }}</div>
 </div>
 
-<div class="quiz-card">
+<div id="quiz-card" class="quiz-card"
+     data-state="{{ state }}"
+     data-card-id="{{ card.id }}"
+     data-deck-id="{{ deck.id }}"
+     data-has-expression-audio="{{ 'true' if has_expression_audio|default(false) else 'false' }}"
+     data-has-example-audio="{{ 'true' if has_example_audio|default(false) else 'false' }}"
+     data-audio-pause-ms="{{ audio_pause_ms|default(1500) }}"
+>
     <div class="quiz-expression">{{ card.source_expression }}</div>
     {% if card.source_example %}
     <div class="quiz-example">"{{ card.source_example }}"</div>
@@ -16,7 +23,7 @@
 
     {% if state == 'front' %}
 
-    <form method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+    <form id="quiz-form" method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
         <input type="hidden" name="card_id" value="{{ card.id }}">
         <div class="quiz-form">
             <input type="text" name="answer" placeholder="Type the answer…" autofocus autocomplete="off">
@@ -29,7 +36,7 @@
     {% elif state == 'needs_article' %}
 
     <div class="quiz-prompt">Please include the article.</div>
-    <form method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+    <form id="quiz-form" method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
         <input type="hidden" name="card_id" value="{{ card.id }}">
         <div class="quiz-form">
             <input type="text" name="answer" value="{{ answer }}" autofocus autocomplete="off">
@@ -51,9 +58,19 @@
 
     <div class="quiz-answer">
         <div class="label">Answer</div>
-        <div class="value">{{ full_answer }}</div>
+        <div class="value">
+            {{ full_answer }}
+            {% if has_expression_audio|default(false) %}
+            <button type="button" id="audio-btn-expression" class="btn-audio">🔊</button>
+            {% endif %}
+        </div>
         {% if card.target_example %}
-        <div class="example">"{{ card.target_example }}"</div>
+        <div class="example">
+            "{{ card.target_example }}"
+            {% if has_example_audio|default(false) %}
+            <button type="button" id="audio-btn-example" class="btn-audio">🔊</button>
+            {% endif %}
+        </div>
         {% endif %}
         {% if card.notes %}
         <div class="notes">{{ card.notes }}</div>
@@ -64,12 +81,126 @@
         <a id="next-card" href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn btn-primary">Next Card</a>
         <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-secondary">Edit</a>
     </div>
-    <script>
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') document.getElementById('next-card').click();
-        });
-    </script>
 
     {% endif %}
 </div>
+
+<script>
+    let _keydownHandler = null;
+
+    function _playAudioEl(audioEl, btn) {
+        if (btn) btn.classList.add('playing');
+        return new Promise((resolve, reject) => {
+            const cleanup = () => { if (btn) btn.classList.remove('playing'); };
+            audioEl.addEventListener('ended', () => { cleanup(); resolve(); });
+            audioEl.addEventListener('error', () => { cleanup(); reject(new Error('audio error')); });
+            audioEl.play().catch(err => { cleanup(); reject(err); });
+        });
+    }
+
+    function _preloadAudio(card) {
+        const cardId = card.dataset.cardId;
+        const result = {};
+        if (card.dataset.hasExpressionAudio === 'true') {
+            result.expression = new Audio('/card/' + cardId + '/audio/expression');
+            result.expression.load();
+        }
+        if (card.dataset.hasExampleAudio === 'true') {
+            result.example = new Audio('/card/' + cardId + '/audio/example');
+            result.example.load();
+        }
+        return result;
+    }
+
+    function playAudioClip(field) {
+        const card   = document.getElementById('quiz-card');
+        const btn    = document.getElementById('audio-btn-' + field);
+        const cardId = card.dataset.cardId;
+        const audio  = new Audio('/card/' + cardId + '/audio/' + field);
+        audio.load();
+        _playAudioEl(audio, btn).catch(() => {});
+    }
+
+    async function _playSequence(card, preloaded) {
+        const hasExpression = card.dataset.hasExpressionAudio === 'true';
+        const hasExample    = card.dataset.hasExampleAudio    === 'true';
+        const pauseMs       = parseInt(card.dataset.audioPauseMs || '1500');
+        const exprBtn       = document.getElementById('audio-btn-expression');
+        const exBtn         = document.getElementById('audio-btn-example');
+
+        if (hasExpression) await _playAudioEl(preloaded.expression, exprBtn);
+        if (hasExpression && hasExample) await new Promise(r => setTimeout(r, pauseMs));
+        if (hasExample)    await _playAudioEl(preloaded.example, exBtn);
+    }
+
+    function initQuizCard(preloaded) {
+        if (_keydownHandler) {
+            document.removeEventListener('keydown', _keydownHandler);
+            _keydownHandler = null;
+        }
+
+        const card  = document.getElementById('quiz-card');
+        const state = card.dataset.state;
+        const form  = document.getElementById('quiz-form');
+
+        if (form) {
+            let _submitter = null;
+            form.querySelectorAll('[type="submit"]').forEach(btn => {
+                btn.addEventListener('click', () => { _submitter = btn; });
+            });
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const formData = new FormData(form);
+                if (_submitter && _submitter.name) {
+                    formData.set(_submitter.name, _submitter.value);
+                }
+                _submitter = null;
+                const url  = form.getAttribute('action');
+                const resp = await fetch(url, {
+                    method:  'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body:    new URLSearchParams(formData),
+                });
+                const html    = await resp.text();
+                const doc     = new DOMParser().parseFromString(html, 'text/html');
+                const newCard = doc.getElementById('quiz-card');
+                if (!newCard) return;
+
+                // Start loading audio before swapping the DOM
+                const preloaded = _preloadAudio(newCard);
+
+                card.replaceWith(newCard);
+                initQuizCard(preloaded);
+            });
+        }
+
+        if (state === 'back') {
+            const nextCard = document.getElementById('next-card');
+            if (nextCard) {
+                _keydownHandler = e => { if (e.key === 'Enter') nextCard.click(); };
+                document.addEventListener('keydown', _keydownHandler);
+            }
+
+            document.getElementById('audio-btn-expression')
+                ?.addEventListener('click', () => playAudioClip('expression'));
+            document.getElementById('audio-btn-example')
+                ?.addEventListener('click', () => playAudioClip('example'));
+
+            if (preloaded && (preloaded.expression || preloaded.example)) {
+                _playSequence(card, preloaded).catch(e => {
+                    if (e && e.name === 'NotAllowedError') {
+                        const btn = document.createElement('button');
+                        btn.className   = 'btn btn-secondary';
+                        btn.textContent = '▶ Play audio';
+                        btn.onclick     = () => { btn.remove(); _playSequence(card, preloaded); };
+                        document.querySelector('.actions').prepend(btn);
+                    }
+                });
+            }
+        }
+    }
+
+    initQuizCard();
+</script>
 {% endblock %}

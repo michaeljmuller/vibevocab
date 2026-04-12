@@ -62,6 +62,19 @@ STUDY MODE
 - After submitting, the user can override the result to mark it correct (e.g. for typos).
 
 
+LLM ASSISTANCE (EDIT CARD PAGE)
+--------------------------------
+- A "Suggest" button generates paired example sentences (source + target language)
+  for a card. The number of suggestions is configurable. Clicking a suggestion
+  fills both example sentence fields at once.
+- A "Translate" button translates the source example sentence into the target
+  language using the target expression. If the LLM detects a problem (the example
+  does not use the source expression, or the target expression appears to be a
+  wrong translation), it returns an explanation displayed as a warning. A
+  translation may be returned alongside the warning.
+- The prompts used for both features are configurable via external template files.
+
+
 SPACED REPETITION (SRS)
 -----------------------
 - Uses the SM-2 algorithm.

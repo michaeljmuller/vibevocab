@@ -1,3 +1,7 @@
 Flask
 Flask-SQLAlchemy
 psycopg2-binary
+instructor
+openai
+anthropic
+elevenlabs

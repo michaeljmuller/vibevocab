@@ -25,6 +25,23 @@ OAuth
 - Apple OAuth to be added later. Initial Apple support may not handle email hiding
   (user will need to provide their relay address to the admin).
 
+LLM
+---
+- Sentence suggestion and translation features use an LLM via the Instructor
+  library (https://python.useinstructor.com), which provides structured
+  (Pydantic-validated) responses across providers.
+- Provider abstraction: a single LLM_PROVIDER env var selects the backend.
+  Supported values:
+    openai-compatible — OpenAI or any OpenAI-compatible endpoint (Groq, Together,
+                        Ollama, etc.), configured via LLM_BASE_URL
+    anthropic         — Anthropic Claude
+- Prompts are stored as external template files (Python string.Template format,
+  $name placeholders) and referenced by path via env vars. This allows prompt
+  tuning without code changes or container restarts.
+- Structured responses use Pydantic models; Instructor handles retries and
+  validation transparently.
+
+
 TTS
 ---
 - use ElevenLabs

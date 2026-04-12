@@ -142,6 +142,7 @@ h1 {
     padding: 0.6rem 1.25rem;
     font-size: 1rem;
     font-weight: 500;
+    line-height: 1.5;
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -221,10 +222,47 @@ h1 {
     margin-top: 0.625rem;
 }
 
+.btn-audio {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.4;
+    padding: 0 0.2rem;
+    vertical-align: middle;
+    transition: opacity 0.15s;
+}
+
+.btn-audio:hover,
+.btn-audio.playing {
+    opacity: 1;
+}
+
 .actions {
     margin-top: 1.75rem;
     display: flex;
     gap: 0.625rem;
+    align-items: flex-start;
+}
+
+.action-primary {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    margin-right: 0.75rem;
+    align-self: flex-start;
+}
+
+.kbd-hint {
+    font-size: 0.8rem;
+    color: #aaa;
+    transition: color 0.15s, font-weight 0.15s;
+}
+
+.action-primary:hover .kbd-hint {
+    color: #555;
+    font-weight: 600;
 }
 
 
@@ -288,16 +326,121 @@ h1 {
     resize: vertical;
 }
 
-.field-checkbox {
-    flex-direction: row;
-    align-items: center;
-}
-
-.field-checkbox label {
+.noun-gender-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    color: #555;
     cursor: pointer;
-    font-size: 1rem;
-    color: #333;
+    white-space: nowrap;
+}
+
+.field-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.btn-suggest {
+    padding: 0.2rem 0.625rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1.5px solid #bbb;
+    border-radius: 4px;
+    background: white;
+    color: #666;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-suggest:hover:not(:disabled) {
+    border-color: #2c5f8a;
+    color: #2c5f8a;
+}
+
+.btn-suggest:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+#suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-top: 0.375rem;
+}
+
+.suggestion-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    background: #f0f4f8;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.suggestion-item:hover {
+    background: #dbe9f5;
+    border-color: #2c5f8a;
+}
+
+.suggestion-source {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.suggestion-target {
+    font-size: 0.95rem;
+    color: #222;
+}
+
+.suggestion-error {
+    font-size: 0.875rem;
+    color: #991b1b;
+    margin-top: 0.25rem;
+}
+
+.hidden {
+    display: none;
+}
+
+.audio-player {
+    margin-top: 0.375rem;
+}
+
+.audio-player audio {
+    width: 100%;
+    height: 32px;
+}
+
+.audio-player.audio-stale audio {
+    opacity: 0.4;
+}
+
+.audio-clear-warning {
+    font-size: 0.8rem;
+    color: #92400e;
+    margin-top: 0.2rem;
+}
+
+.translation-warning {
+    font-size: 0.875rem;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.375rem;
 }

@@ -1,0 +1,9 @@
+Generate ${count} example sentence pairs for the vocabulary card
+"${source_expression}" (${source_language}) → "${target_expression}"${pos_hint} (${target_language}).${notes_hint}
+
+For each pair, provide one natural sentence in ${source_language} that uses
+"${source_expression}", and its idiomatic translation in ${target_language}
+that uses "${target_expression}".
+
+Sentences should suit an intermediate language learner:
+everyday vocabulary, varied in structure, and as concise as possible while effectively illustrating the word/expression's use.

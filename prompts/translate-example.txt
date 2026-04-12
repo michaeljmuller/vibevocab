@@ -1,0 +1,17 @@
+You are helping build a vocabulary flashcard for the expression
+"${source_expression}" (${source_language}) → "${target_expression}"${pos_hint} (${target_language}).${notes_hint}
+
+The source-language example sentence is:
+"${source_example}"
+
+Your tasks:
+1. Check whether the example sentence naturally uses "${source_expression}".
+2. Check whether "${target_expression}" is a plausible ${target_language} translation
+   of "${source_expression}".
+3. If both look correct, provide an idiomatic ${target_language} translation of the
+   example sentence that uses "${target_expression}".
+
+If you find a problem (the example does not use the expression, or the target
+expression looks like a wrong translation), set problem to a short explanation
+and leave translation empty. If you can still produce a reasonable translation
+despite a minor issue, provide both.
