@@ -1,97 +1,99 @@
 {% extends 'base.html' %}
 
-{% block title %}Edit Card — VibeVocab{% endblock %}
+{% block title %}{% if card.id %}Edit{% else %}Add{% endif %} Card — VibeVocab{% endblock %}
 
 {% block content %}
 <div class="deck-header">
-    <h1>Edit Card</h1>
+    <h1>{% if card.id %}Edit{% else %}Add{% endif %} Card</h1>
     <div class="subtitle">{{ deck.name }} · {{ deck.source_language }} → {{ deck.target_language }}</div>
 </div>
 
-<form method="POST" class="edit-form" id="edit-form" onkeydown="if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA')event.preventDefault()">
+<form method="POST" action="{{ form_action or '' }}" class="edit-form" id="edit-form" onkeydown="if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA')event.preventDefault()">
     <input type="hidden" name="return_url" value="{{ return_url }}">
 
-    <div class="field-group">
-        <h2>{{ deck.source_language }}</h2>
-        <div class="field">
-            <label for="source_expression">Expression</label>
-            <input type="text" id="source_expression" name="source_expression"
-                   value="{{ card.source_expression }}" required autofocus>
-        </div>
-        <div class="field">
-            <div class="field-label-row">
-                <label for="source_example">Example sentence</label>
-                <button type="button" id="suggest-btn" class="btn-suggest">Suggest</button>
+    <div class="field-group card-columns">
+        <div class="card-column">
+            <h2>{{ deck.source_language }}</h2>
+            <div class="field">
+                <label for="source_expression">Expression</label>
+                <input type="text" id="source_expression" name="source_expression"
+                       value="{{ card.source_expression }}" required autofocus>
             </div>
-            <input type="text" id="source_example" name="source_example"
-                   value="{{ card.source_example or '' }}">
-            <div id="suggestions"></div>
+            <div class="field">
+                <div class="field-label-row">
+                    <label for="source_example">Example sentence</label>
+                    <button type="button" id="suggest-btn" class="btn-suggest">Suggest</button>
+                </div>
+                <input type="text" id="source_example" name="source_example"
+                       value="{{ card.source_example or '' }}">
+                <div id="suggestions"></div>
+            </div>
         </div>
-    </div>
 
-    <div class="field-group">
-        <h2>{{ deck.target_language }}</h2>
-        <div class="field">
-            <label for="part_of_speech">Part of speech</label>
-            <select id="part_of_speech" name="part_of_speech">
-                <option value="">—</option>
-                {% for pos in parts_of_speech %}
-                <option value="{{ pos }}" {{ 'selected' if card.part_of_speech == pos }}>{{ pos }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="field noun-only">
-            <label for="noun_gender">Noun gender</label>
-            <div class="noun-gender-row">
-                <select id="noun_gender" name="noun_gender">
+        <div class="card-column">
+            <h2>{{ deck.target_language }}</h2>
+            <div class="field">
+                <label for="part_of_speech">Part of speech</label>
+                <select id="part_of_speech" name="part_of_speech">
                     <option value="">—</option>
-                    {% for g in noun_genders %}
-                    <option value="{{ g }}" {{ 'selected' if card.noun_gender == g }}>{{ g }}</option>
+                    {% for pos in parts_of_speech %}
+                    <option value="{{ pos }}" {{ 'selected' if card.part_of_speech == pos }}>{{ pos }}</option>
                     {% endfor %}
                 </select>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="noun_is_plural" {{ 'checked' if card.noun_is_plural }}>
-                    Plural noun
-                </label>
             </div>
-        </div>
-        <div class="field">
-            <div class="field-label-row">
-                <label for="target_expression">Expression</label>
-                <button type="button" class="btn-suggest" id="audio-expression-btn"
-                        data-field="expression">Generate audio</button>
+            <div class="field noun-only">
+                <label for="noun_gender">Noun gender</label>
+                <div class="noun-gender-row">
+                    <select id="noun_gender" name="noun_gender">
+                        <option value="">—</option>
+                        {% for g in noun_genders %}
+                        <option value="{{ g }}" {{ 'selected' if card.noun_gender == g }}>{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="noun_is_plural" {{ 'checked' if card.noun_is_plural }}>
+                        Plural noun
+                    </label>
+                </div>
             </div>
-            <input type="text" id="target_expression" name="target_expression"
-                   value="{{ card.target_expression }}" required
-                   data-original="{{ card.target_expression }}">
-            <div id="audio-expression-player" class="audio-player{% if not has_expression_audio %} hidden{% endif %}">
-                {% if has_expression_audio %}
-                <audio controls src="{{ url_for('serve_audio', card_id=card.id, field='expression') }}"></audio>
-                {% else %}
-                <audio controls></audio>
-                {% endif %}
+            <div class="field">
+                <div class="field-label-row">
+                    <label for="target_expression">Expression</label>
+                    <button type="button" class="btn-suggest" id="audio-expression-btn"
+                            data-field="expression">Generate audio</button>
+                </div>
+                <input type="text" id="target_expression" name="target_expression"
+                       value="{{ card.target_expression }}" required
+                       data-original="{{ card.target_expression }}">
+                <div id="audio-expression-player" class="audio-player{% if not has_expression_audio %} hidden{% endif %}">
+                    {% if has_expression_audio %}
+                    <audio controls src="{{ url_for('serve_audio', card_id=card.id, field='expression') }}"></audio>
+                    {% else %}
+                    <audio controls></audio>
+                    {% endif %}
+                </div>
+                {% if card.id %}<p id="audio-expression-warning" class="audio-clear-warning hidden">Audio will be cleared on save.</p>{% endif %}
             </div>
-            <p id="audio-expression-warning" class="audio-clear-warning hidden">Audio will be cleared on save.</p>
-        </div>
-        <div class="field">
-            <div class="field-label-row">
-                <label for="target_example">Example sentence</label>
-                <button type="button" id="translate-btn" class="btn-suggest">Translate from {{ deck.source_language }}</button>
-                <button type="button" class="btn-suggest" id="audio-example-btn"
-                        data-field="example">Generate audio</button>
+            <div class="field">
+                <div class="field-label-row">
+                    <label for="target_example">Example sentence</label>
+                    <button type="button" id="translate-btn" class="btn-suggest">Translate from {{ deck.source_language }}</button>
+                    <button type="button" class="btn-suggest" id="audio-example-btn"
+                            data-field="example">Generate audio</button>
+                </div>
+                <input type="text" id="target_example" name="target_example"
+                       value="{{ card.target_example or '' }}"
+                       data-original="{{ card.target_example or '' }}">
+                <div id="audio-example-player" class="audio-player{% if not has_example_audio %} hidden{% endif %}">
+                    {% if has_example_audio %}
+                    <audio controls src="{{ url_for('serve_audio', card_id=card.id, field='example') }}"></audio>
+                    {% else %}
+                    <audio controls></audio>
+                    {% endif %}
+                </div>
+                {% if card.id %}<p id="audio-example-warning" class="audio-clear-warning hidden">Audio will be cleared on save.</p>{% endif %}
+                <div id="translation-feedback"></div>
             </div>
-            <input type="text" id="target_example" name="target_example"
-                   value="{{ card.target_example or '' }}"
-                   data-original="{{ card.target_example or '' }}">
-            <div id="audio-example-player" class="audio-player{% if not has_example_audio %} hidden{% endif %}">
-                {% if has_example_audio %}
-                <audio controls src="{{ url_for('serve_audio', card_id=card.id, field='example') }}"></audio>
-                {% else %}
-                <audio controls></audio>
-                {% endif %}
-            </div>
-            <p id="audio-example-warning" class="audio-clear-warning hidden">Audio will be cleared on save.</p>
-            <div id="translation-feedback"></div>
         </div>
     </div>
 
@@ -134,6 +136,8 @@
         pos.addEventListener('change', updateNounFields);
         updateNounFields();
 
+        const CARD_ID = {{ card.id if card.id else 'null' }};
+
         document.getElementById('suggest-btn').addEventListener('click', async function () {
             const btn          = this;
             const suggestionsEl = document.getElementById('suggestions');
@@ -145,8 +149,12 @@
             btn.textContent = 'Thinking…';
             suggestionsEl.innerHTML = '';
 
+            const suggestUrl = CARD_ID
+                ? '/card/' + CARD_ID + '/suggest'
+                : '/deck/' + DECK_ID + '/suggest';
+
             try {
-                const resp = await fetch('/card/{{ card.id }}/suggest', {
+                const resp = await fetch(suggestUrl, {
                     method:  'POST',
                     headers: {'Content-Type': 'application/json'},
                     body:    JSON.stringify({
@@ -196,7 +204,8 @@
             }
         });
 
-        // Audio invalidation tracking
+        {% if card.id %}
+        // Audio invalidation tracking (only relevant when existing audio may be present)
         function setupAudioInvalidation(inputId, warningId, playerId) {
             const input   = document.getElementById(inputId);
             const warning = document.getElementById(warningId);
@@ -211,27 +220,39 @@
         }
         setupAudioInvalidation('target_expression', 'audio-expression-warning', 'audio-expression-player');
         setupAudioInvalidation('target_example',    'audio-example-warning',    'audio-example-player');
+        {% endif %}
 
         // Audio generation
         async function generateAudio(field) {
-            const btn        = document.getElementById('audio-' + field + '-btn');
-            const playerDiv  = document.getElementById('audio-' + field + '-player');
-            const audioEl    = playerDiv.querySelector('audio');
-            const inputEl    = document.getElementById(field === 'expression' ? 'target_expression' : 'target_example');
-            const hiddenEl   = document.getElementById('audio-' + field + '-b64');
-            const warningEl  = document.getElementById('audio-' + field + '-warning');
-            const text       = inputEl.value.trim();
+            const btn       = document.getElementById('audio-' + field + '-btn');
+            const playerDiv = document.getElementById('audio-' + field + '-player');
+            const audioEl   = playerDiv.querySelector('audio');
+            const inputEl   = document.getElementById(field === 'expression' ? 'target_expression' : 'target_example');
+            const hiddenEl  = document.getElementById('audio-' + field + '-b64');
+            const warningEl = document.getElementById('audio-' + field + '-warning');
+            const text      = inputEl.value.trim();
 
             if (!text) return;
 
             btn.disabled    = true;
             btn.textContent = 'Generating…';
 
+            const audioUrl = CARD_ID
+                ? '/card/' + CARD_ID + '/audio/' + field + '/generate'
+                : '/deck/' + DECK_ID + '/audio/generate';
+
             try {
-                const resp = await fetch('/card/{{ card.id }}/audio/' + field + '/generate', {
+                const payload = {text, field};
+                if (field === 'expression') {
+                    payload.part_of_speech = pos.value || null;
+                    payload.noun_gender    = document.getElementById('noun_gender').value || null;
+                    const pluralCb = document.querySelector('[name=noun_is_plural]');
+                    payload.noun_is_plural = pluralCb ? pluralCb.checked : false;
+                }
+                const resp = await fetch(audioUrl, {
                     method:  'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body:    JSON.stringify({text}),
+                    body:    JSON.stringify(payload),
                 });
                 const respText = await resp.text();
                 if (!resp.ok) {
@@ -249,12 +270,9 @@
                 audioEl.play();
                 playerDiv.classList.remove('hidden', 'audio-stale');
 
-                // Store for form submission
-                hiddenEl.value = data.audio_b64;
-
-                // This text is now in sync with the pending audio
+                if (hiddenEl) hiddenEl.value = data.audio_b64;
                 inputEl.dataset.original = text;
-                warningEl.classList.add('hidden');
+                if (warningEl) warningEl.classList.add('hidden');
             } catch (e) {
                 alert('Could not generate audio: ' + e.message);
             } finally {
@@ -284,8 +302,12 @@
             btn.textContent = 'Thinking…';
             feedbackEl.innerHTML = '';
 
+            const translateUrl = CARD_ID
+                ? '/card/' + CARD_ID + '/translate'
+                : '/deck/' + DECK_ID + '/translate';
+
             try {
-                const resp = await fetch('/card/{{ card.id }}/translate', {
+                const resp = await fetch(translateUrl, {
                     method:  'POST',
                     headers: {'Content-Type': 'application/json'},
                     body:    JSON.stringify({
@@ -325,7 +347,6 @@
 
         // ── Tags ──────────────────────────────────────────────────────────
 
-        const CARD_ID = {{ card.id }};
         const DECK_ID = {{ deck.id }};
 
         function renderTagChips(tags) {
@@ -347,6 +368,7 @@
             });
         }
 
+        {% if card.id %}
         async function addTag(name) {
             name = name.trim();
             if (!name) return;
@@ -373,11 +395,39 @@
             } catch (_) {}
         }
 
-        // Wire remove buttons on initial server-rendered chips
         document.querySelectorAll('#edit-tag-chips .tag-remove').forEach(btn => {
             const chip = btn.closest('.tag-chip');
             btn.addEventListener('click', () => removeTag(chip.dataset.tag));
         });
+        {% else %}
+        let _pendingTags = [];
+
+        function _syncTagInputs() {
+            document.querySelectorAll('input[name="tag"]').forEach(el => el.remove());
+            const form = document.getElementById('edit-form');
+            _pendingTags.forEach(name => {
+                const input = document.createElement('input');
+                input.type  = 'hidden';
+                input.name  = 'tag';
+                input.value = name;
+                form.appendChild(input);
+            });
+        }
+
+        function addTag(name) {
+            name = name.trim();
+            if (!name || _pendingTags.some(t => t.toLowerCase() === name.toLowerCase())) return;
+            _pendingTags.push(name);
+            renderTagChips(_pendingTags);
+            _syncTagInputs();
+        }
+
+        function removeTag(name) {
+            _pendingTags = _pendingTags.filter(t => t.toLowerCase() !== name.toLowerCase());
+            renderTagChips(_pendingTags);
+            _syncTagInputs();
+        }
+        {% endif %}
 
         const tagInput  = document.getElementById('tag-input');
         const tagAddBtn = document.getElementById('tag-add-btn');

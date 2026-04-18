@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import deferred
 
@@ -63,6 +64,6 @@ class Card(db.Model):
     notes             = db.Column(db.Text)
     expression_audio  = deferred(db.Column(db.LargeBinary))
     example_audio     = deferred(db.Column(db.LargeBinary))
-    created_at        = db.Column(db.DateTime, nullable=False)
-    updated_at        = db.Column(db.DateTime, nullable=False)
+    created_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     tags              = db.relationship('Tag', secondary=card_tags, lazy='select')

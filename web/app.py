@@ -1,5 +1,6 @@
 import os
 import base64
+import types
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response
 from models import db, User, Deck, Card, Tag, StudySet
@@ -281,6 +282,60 @@ def edit_card(card_id):
                            return_url=return_url)
 
 
+@app.route('/deck/<int:deck_id>/cards/new', methods=['GET', 'POST'])
+def add_card(deck_id):
+    deck = Deck.query.get_or_404(deck_id)
+    fallback_url = url_for('deck_detail', deck_id=deck_id)
+
+    if request.method == 'POST':
+        expression_audio_b64 = request.form.get('expression_audio_b64', '').strip()
+        example_audio_b64    = request.form.get('example_audio_b64', '').strip()
+        card = Card(
+            deck_id=deck_id,
+            source_expression=request.form['source_expression'].strip(),
+            source_example=request.form.get('source_example', '').strip() or None,
+            target_expression=request.form['target_expression'].strip(),
+            target_example=request.form.get('target_example', '').strip() or None,
+            part_of_speech=request.form.get('part_of_speech') or None,
+            noun_gender=request.form.get('noun_gender') or None,
+            noun_is_plural='noun_is_plural' in request.form,
+            notes=request.form.get('notes', '').strip() or None,
+            expression_audio=base64.b64decode(expression_audio_b64) if expression_audio_b64 else None,
+            example_audio=base64.b64decode(example_audio_b64) if example_audio_b64 else None,
+        )
+        db.session.add(card)
+        db.session.flush()
+        for tag_name in request.form.getlist('tag'):
+            tag_name = tag_name.strip()
+            if not tag_name:
+                continue
+            tag = Tag.query.filter(Tag.deck_id == deck_id,
+                                   db.func.lower(Tag.name) == tag_name.lower()).first()
+            if not tag:
+                tag = Tag(deck_id=deck_id, name=tag_name)
+                db.session.add(tag)
+                db.session.flush()
+            card.tags.append(tag)
+        db.session.commit()
+        return_url = _safe_return_url(request.form.get('return_url'), fallback_url)
+        return redirect(return_url)
+
+    stub = types.SimpleNamespace(
+        id=None,
+        source_expression='', source_example=None,
+        target_expression='', target_example=None,
+        part_of_speech=None, noun_gender=None, noun_is_plural=False,
+        notes=None, tags=[],
+        expression_audio=None, example_audio=None,
+    )
+    return_url = _safe_return_url(request.args.get('return_url'), fallback_url)
+    return render_template('edit_card.html', card=stub, deck=deck,
+                           parts_of_speech=PARTS_OF_SPEECH, noun_genders=NOUN_GENDERS,
+                           has_expression_audio=False, has_example_audio=False,
+                           return_url=return_url,
+                           form_action=url_for('add_card', deck_id=deck_id))
+
+
 @app.route('/card/<int:card_id>/quiz')
 def quiz_card(card_id):
     card  = Card.query.get_or_404(card_id)
@@ -422,18 +477,99 @@ def serve_audio(card_id, field):
                     headers={'Cache-Control': 'no-store'})
 
 
+def _with_article(text, part_of_speech, noun_gender, noun_is_plural, language):
+    if part_of_speech == 'noun' and noun_gender:
+        article = get_article(noun_gender, noun_is_plural, language)
+        if article:
+            return f"{article} {text}"
+    return text
+
+
 @app.route('/card/<int:card_id>/audio/<field>/generate', methods=['POST'])
 def generate_audio(card_id, field):
     if field not in ('expression', 'example'):
         abort(404)
     try:
         from tts import generate_audio as tts_generate
-        Card.query.get_or_404(card_id)  # verify card exists
+        card = Card.query.get_or_404(card_id)
+        deck = Deck.query.get_or_404(card.deck_id)
 
         data = request.get_json(force=True)
         text = (data.get('text') or '').strip()
         if not text:
             return jsonify(error='No text to generate audio for.'), 400
+
+        if field == 'expression':
+            part_of_speech = data.get('part_of_speech') or card.part_of_speech
+            noun_gender    = data.get('noun_gender')    or card.noun_gender
+            noun_is_plural = data.get('noun_is_plural', card.noun_is_plural)
+            text = _with_article(text, part_of_speech, noun_gender, noun_is_plural, deck.target_language)
+
+        audio = tts_generate(text)
+        return jsonify(audio_b64=base64.b64encode(audio).decode())
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/deck/<int:deck_id>/suggest', methods=['POST'])
+def deck_suggest(deck_id):
+    try:
+        from llm import suggest_sentence_pairs
+        deck = Deck.query.get_or_404(deck_id)
+        data              = request.get_json(force=True)
+        source_expression = (data.get('source_expression') or '').strip()
+        target_expression = (data.get('target_expression') or '').strip()
+        part_of_speech    = data.get('part_of_speech') or None
+        count             = int(os.environ.get('SUGGESTION_COUNT', '3'))
+        pairs = suggest_sentence_pairs(
+            source_expression, target_expression, part_of_speech, None,
+            deck.source_language, deck.target_language, count,
+        )
+        return jsonify(pairs=[{'source': p.source, 'target': p.target} for p in pairs])
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/deck/<int:deck_id>/translate', methods=['POST'])
+def deck_translate(deck_id):
+    try:
+        from llm import translate_example
+        deck = Deck.query.get_or_404(deck_id)
+        data              = request.get_json(force=True)
+        source_expression = (data.get('source_expression') or '').strip()
+        target_expression = (data.get('target_expression') or '').strip()
+        source_example    = (data.get('source_example') or '').strip()
+        part_of_speech    = data.get('part_of_speech') or None
+        if not source_example:
+            return jsonify(error='No source example to translate.'), 400
+        result = translate_example(
+            source_expression, target_expression, source_example,
+            part_of_speech, None,
+            deck.source_language, deck.target_language,
+        )
+        return jsonify(translation=result.translation, problem=result.problem)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/deck/<int:deck_id>/audio/generate', methods=['POST'])
+def deck_generate_audio(deck_id):
+    deck = Deck.query.get_or_404(deck_id)
+    try:
+        from tts import generate_audio as tts_generate
+        data = request.get_json(force=True)
+        text = (data.get('text') or '').strip()
+        if not text:
+            return jsonify(error='No text to generate audio for.'), 400
+
+        if data.get('field') == 'expression':
+            text = _with_article(
+                text,
+                data.get('part_of_speech'),
+                data.get('noun_gender'),
+                bool(data.get('noun_is_plural')),
+                deck.target_language,
+            )
 
         audio = tts_generate(text)
         return jsonify(audio_b64=base64.b64encode(audio).decode())
