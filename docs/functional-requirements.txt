@@ -25,8 +25,36 @@ DECKS
 -----
 - Each user has private decks; decks are not shared between users.
 - A deck has a name, a source language, and a target language.
-- Languages are specified as BCP 47 locale codes (e.g. en-US, pt-PT, pt-BR, it-IT).]
+- Languages are specified as BCP 47 locale codes (e.g. en-US, pt-PT, pt-BR, it-IT).
 - Default source language is en-US.  No default target language.
+
+
+TAGS
+----
+- Cards can be tagged with one or more short labels (e.g. "food", "beginner", "travel").
+- Tags are free-entry strings, scoped to a deck.
+- A card may have zero or more tags.
+- Tags can be added or removed from the card edit page.
+- Tags can also be added quickly from the flipped card view during study, without
+  navigating to the edit page. The input autocompletes against existing tags in the deck
+  and accepts free-entry for new tags.
+
+
+STUDY SETS
+----------
+- A study set is a named, saved filter over the cards in a single deck.
+- Each deck has one implicit default study set ("All cards") that includes every card
+  in the deck. It requires no query and cannot be deleted.
+- User-defined study sets are defined by a tag query (see below).
+- Study sets are always scoped to one deck; cards from different decks cannot be mixed.
+
+Tag query language:
+- Bare tag name matches cards that have that tag:          food
+- AND, OR, NOT operators:                                  food AND NOT advanced
+- Parentheses for grouping:                                (food OR travel) AND beginner
+- AND binds more tightly than OR; use parens to override.
+- Special keyword "untagged" matches cards with no tags:   untagged
+- Tag names are case-insensitive.
 
 
 CARDS

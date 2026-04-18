@@ -444,3 +444,191 @@ h1 {
     padding: 0.5rem 0.75rem;
     margin-top: 0.375rem;
 }
+
+
+/* ── Tags ── */
+
+.tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    min-height: 1.5rem;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: #dbe9f5;
+    color: #1e4a6e;
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem 0.15rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.tag-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #5580a0;
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+    opacity: 0.6;
+    transition: opacity 0.1s;
+}
+
+.tag-remove:hover {
+    opacity: 1;
+}
+
+.tag-input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    align-items: center;
+}
+
+.tag-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s;
+}
+
+.tag-input:focus {
+    border-color: #2c5f8a;
+}
+
+.tag-autocomplete {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    margin-top: 0.25rem;
+    overflow: hidden;
+}
+
+.tag-ac-item {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    color: #333;
+    transition: background 0.1s;
+}
+
+.tag-ac-item:hover {
+    background: #f0f4f8;
+}
+
+
+/* ── Quick-tag (quiz back state) ── */
+
+.quick-tag {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #eee;
+}
+
+
+/* ── Study set list ── */
+
+.study-set-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.study-set-item {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.study-set-all {
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.15s;
+}
+
+.study-set-all:hover {
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+.study-set-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #2c5f8a;
+    text-decoration: none;
+}
+
+.study-set-name:hover {
+    text-decoration: underline;
+}
+
+.study-set-meta {
+    color: #888;
+    font-size: 0.8rem;
+    font-family: monospace;
+    flex: 1;
+}
+
+.study-set-actions {
+    display: flex;
+    gap: 0.375rem;
+    margin-left: auto;
+}
+
+.btn-suggest-danger {
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.btn-suggest-danger:hover:not(:disabled) {
+    border-color: #991b1b;
+    color: #991b1b;
+}
+
+.study-set-empty {
+    color: #888;
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+}
+
+
+/* ── Study set query help text ── */
+
+.query-help {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #888;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.query-help code {
+    background: #f0f4f8;
+    border-radius: 3px;
+    padding: 0.05em 0.3em;
+    font-size: 0.85em;
+    color: #1e4a6e;
+}

@@ -6,7 +6,7 @@
 <h1>My Decks</h1>
 <div class="deck-list">
     {% for deck in decks %}
-    <a class="deck-card" href="{{ url_for('quiz', deck_id=deck.id) }}">
+    <a class="deck-card" href="{{ url_for('deck_detail', deck_id=deck.id) }}">
         <div class="deck-name">{{ deck.name }}</div>
         <div class="deck-langs">{{ deck.source_language }} → {{ deck.target_language }}</div>
     </a>

@@ -77,6 +77,32 @@ CREATE TABLE deck_preferences (
     UNIQUE (user_id, deck_id)
 );
 
+-- Tags (scoped to a deck, stored as-entered, unique by lowercase within a deck)
+CREATE TABLE tags (
+    id       SERIAL  PRIMARY KEY,
+    deck_id  INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    name     TEXT    NOT NULL
+);
+CREATE UNIQUE INDEX ix_tags_deck_id_name ON tags (deck_id, lower(name));
+
+-- Cards <-> Tags (many-to-many)
+CREATE TABLE card_tags (
+    card_id  INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    tag_id   INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
+    PRIMARY KEY (card_id, tag_id)
+);
+
+-- Study sets (named tag queries scoped to a deck)
+-- query: tag expression string, e.g. "food AND NOT advanced"
+CREATE TABLE study_sets (
+    id         SERIAL    PRIMARY KEY,
+    deck_id    INTEGER   NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    name       TEXT      NOT NULL,
+    tag_query  TEXT      NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 -- Review history
 -- quality_score:    SM-2 quality 0–5
 -- response_time_ms: time from card display to answer submission

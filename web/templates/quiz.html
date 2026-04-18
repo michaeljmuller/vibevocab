@@ -23,23 +23,25 @@
 
     {% if state == 'front' %}
 
-    <form id="quiz-form" method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+    <form id="quiz-form" method="POST" action="{{ check_url }}">
         <input type="hidden" name="card_id" value="{{ card.id }}">
         <div class="quiz-form">
-            <input type="text" name="answer" placeholder="Type the answer…" autofocus autocomplete="off">
+            <input type="text" name="answer" placeholder="Type the answer…" autofocus
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <button type="submit" name="action" value="submit" class="btn btn-primary">Check</button>
             <button type="submit" name="action" value="flip" class="btn btn-secondary">Show Answer</button>
-            <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-secondary">Edit</a>
+            <a href="{{ url_for('edit_card', card_id=card.id, return_url=return_url) }}" class="btn btn-secondary">Edit</a>
         </div>
     </form>
 
     {% elif state == 'needs_article' %}
 
     <div class="quiz-prompt">Please include the article.</div>
-    <form id="quiz-form" method="POST" action="{{ url_for('quiz_check', deck_id=deck.id) }}">
+    <form id="quiz-form" method="POST" action="{{ check_url }}">
         <input type="hidden" name="card_id" value="{{ card.id }}">
         <div class="quiz-form">
-            <input type="text" name="answer" value="{{ answer }}" autofocus autocomplete="off">
+            <input type="text" name="answer" value="{{ answer }}" autofocus
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <button type="submit" name="action" value="submit" class="btn btn-primary">Check</button>
         </div>
     </form>
@@ -77,9 +79,24 @@
         {% endif %}
     </div>
 
+    <div class="quick-tag"
+         data-card-id="{{ card.id }}"
+         data-deck-id="{{ deck.id }}">
+        <div id="quick-tag-chips" class="tag-chips">
+            {% for tag in card.tags %}
+            <span class="tag-chip" data-tag="{{ tag.name }}">{{ tag.name }}<button class="tag-remove" type="button" aria-label="Remove tag">×</button></span>
+            {% endfor %}
+        </div>
+        <div class="tag-input-row">
+            <input type="text" id="quick-tag-input" class="tag-input" placeholder="Add tag…" autocomplete="off">
+            <button type="button" id="quick-tag-btn" class="btn-suggest">Add</button>
+        </div>
+        <div id="quick-tag-autocomplete" class="tag-autocomplete hidden"></div>
+    </div>
+
     <div class="actions">
-        <a id="next-card" href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn btn-primary">Next Card</a>
-        <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-secondary">Edit</a>
+        <a id="next-card" href="{{ next_url }}" class="btn btn-primary">Next Card</a>
+        <a href="{{ url_for('edit_card', card_id=card.id, return_url=return_url) }}" class="btn btn-secondary">Edit</a>
     </div>
 
     {% endif %}
@@ -132,6 +149,125 @@
         if (hasExpression && hasExample) await new Promise(r => setTimeout(r, pauseMs));
         if (hasExample)    await _playAudioEl(preloaded.example, exBtn);
     }
+
+    // ── Tag helpers ────────────────────────────────────────────────────────
+
+    function _renderTagChips(tags, chipsEl, cardId) {
+        chipsEl.innerHTML = '';
+        tags.forEach(name => {
+            const chip   = document.createElement('span');
+            chip.className       = 'tag-chip';
+            chip.dataset.tag     = name;
+            chip.textContent     = name;
+            const btn            = document.createElement('button');
+            btn.type             = 'button';
+            btn.className        = 'tag-remove';
+            btn.setAttribute('aria-label', 'Remove tag');
+            btn.textContent      = '×';
+            btn.addEventListener('click', () => _removeTag(name, chipsEl, cardId));
+            chip.appendChild(btn);
+            chipsEl.appendChild(chip);
+        });
+    }
+
+    async function _addTag(name, chipsEl, cardId) {
+        name = name.trim();
+        if (!name) return;
+        try {
+            const resp = await fetch('/card/' + cardId + '/tags/add', {
+                method:  'POST',
+                headers: {'Content-Type': 'application/json'},
+                body:    JSON.stringify({name}),
+            });
+            const data = await resp.json();
+            if (data.error) return;
+            _renderTagChips(data.tags, chipsEl, cardId);
+        } catch (_) {}
+    }
+
+    async function _removeTag(name, chipsEl, cardId) {
+        try {
+            const resp = await fetch('/card/' + cardId + '/tags/remove', {
+                method:  'POST',
+                headers: {'Content-Type': 'application/json'},
+                body:    JSON.stringify({name}),
+            });
+            const data = await resp.json();
+            if (data.error) return;
+            _renderTagChips(data.tags, chipsEl, cardId);
+        } catch (_) {}
+    }
+
+    let _tagAutocompleteTimer = null;
+
+    function _initQuickTag(card) {
+        const container   = card.querySelector('.quick-tag');
+        if (!container) return;
+        const cardId      = container.dataset.cardId;
+        const deckId      = container.dataset.deckId;
+        const chipsEl     = container.querySelector('#quick-tag-chips');
+        const input       = container.querySelector('#quick-tag-input');
+        const addBtn      = container.querySelector('#quick-tag-btn');
+        const acEl        = container.querySelector('#quick-tag-autocomplete');
+
+        // Wire up remove buttons on existing chips
+        chipsEl.querySelectorAll('.tag-remove').forEach(btn => {
+            const chip = btn.closest('.tag-chip');
+            btn.addEventListener('click', () => _removeTag(chip.dataset.tag, chipsEl, cardId));
+        });
+
+        function addCurrent() {
+            const name = input.value.trim();
+            if (!name) return;
+            input.value = '';
+            acEl.classList.add('hidden');
+            acEl.innerHTML = '';
+            _addTag(name, chipsEl, cardId);
+        }
+
+        addBtn.addEventListener('click', addCurrent);
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); addCurrent(); }
+            if (e.key === 'Escape') { acEl.classList.add('hidden'); acEl.innerHTML = ''; }
+        });
+
+        input.addEventListener('input', () => {
+            clearTimeout(_tagAutocompleteTimer);
+            const q = input.value.trim();
+            if (!q) { acEl.classList.add('hidden'); acEl.innerHTML = ''; return; }
+            _tagAutocompleteTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch('/deck/' + deckId + '/tags?q=' + encodeURIComponent(q));
+                    const data = await resp.json();
+                    acEl.innerHTML = '';
+                    if (!data.tags.length) { acEl.classList.add('hidden'); return; }
+                    data.tags.forEach(name => {
+                        const item = document.createElement('button');
+                        item.type        = 'button';
+                        item.className   = 'tag-ac-item';
+                        item.textContent = name;
+                        item.addEventListener('mousedown', e => {
+                            e.preventDefault();  // don't blur input before click fires
+                            input.value = '';
+                            acEl.classList.add('hidden');
+                            acEl.innerHTML = '';
+                            _addTag(name, chipsEl, cardId);
+                        });
+                        acEl.appendChild(item);
+                    });
+                    acEl.classList.remove('hidden');
+                } catch (_) {}
+            }, 200);
+        });
+
+        input.addEventListener('blur', () => {
+            // Short delay so mousedown on a suggestion fires first
+            setTimeout(() => { acEl.classList.add('hidden'); acEl.innerHTML = ''; }, 150);
+        });
+    }
+
+    // ── Quiz card init ─────────────────────────────────────────────────────
 
     function initQuizCard(preloaded) {
         if (_keydownHandler) {
@@ -186,6 +322,8 @@
                 ?.addEventListener('click', () => playAudioClip('expression'));
             document.getElementById('audio-btn-example')
                 ?.addEventListener('click', () => playAudioClip('example'));
+
+            _initQuickTag(card);
 
             if (preloaded && (preloaded.expression || preloaded.example)) {
                 _playSequence(card, preloaded).catch(e => {

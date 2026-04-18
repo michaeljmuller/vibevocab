@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ deck.name }} — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="deck-header">
+    <h1>{{ deck.name }}</h1>
+    <div class="subtitle">{{ deck.source_language }} → {{ deck.target_language }}</div>
+</div>
+
+<div class="study-set-list">
+    <a class="study-set-item study-set-all" href="{{ url_for('quiz', deck_id=deck.id) }}">
+        <div class="study-set-name">All cards</div>
+        <div class="study-set-meta">{{ card_count }} card{{ 's' if card_count != 1 }}</div>
+    </a>
+
+    {% for ss in study_sets %}
+    <div class="study-set-item">
+        <a class="study-set-name" href="{{ url_for('study_set_quiz', set_id=ss.id) }}">{{ ss.name }}</a>
+        <div class="study-set-meta">{{ ss.tag_query }}</div>
+        <div class="study-set-actions">
+            <a href="{{ url_for('edit_study_set', set_id=ss.id) }}" class="btn-suggest">Edit</a>
+            <form method="POST" action="{{ url_for('delete_study_set', set_id=ss.id) }}" style="display:inline">
+                <button type="submit" class="btn-suggest btn-suggest-danger"
+                        onclick="return confirm('Delete "{{ ss.name }}"?')">Delete</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not study_sets %}
+    <p class="study-set-empty">No study sets yet. Create one to study a subset of cards.</p>
+    {% endif %}
+</div>
+
+<div class="actions" style="margin-top: 1.5rem">
+    <a href="{{ url_for('new_study_set', deck_id=deck.id) }}" class="btn btn-primary">New study set</a>
+</div>
+{% endblock %}

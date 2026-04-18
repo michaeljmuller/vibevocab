@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if study_set %}Edit Study Set{% else %}New Study Set{% endif %} — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="deck-header">
+    <h1>{% if study_set %}Edit Study Set{% else %}New Study Set{% endif %}</h1>
+    <div class="subtitle">{{ deck.name }}</div>
+</div>
+
+<form method="POST" class="edit-form">
+    <div class="field-group">
+        <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name"
+                   value="{{ study_set.name if study_set else '' }}" required autofocus>
+        </div>
+        <div class="field">
+            <label for="query">Query</label>
+            <input type="text" id="tag_query" name="tag_query"
+                   value="{{ study_set.tag_query if study_set else '' }}" required
+                   placeholder="e.g. food AND NOT advanced">
+            {% if error %}<p class="suggestion-error">{{ error }}</p>{% endif %}
+            <div class="query-help">
+                <p>Tag names match cards with that tag. Combine with AND, OR, NOT, and parentheses.</p>
+                <p>System predicates: <code>_has_tags</code> · <code>_has_expression_audio</code> · <code>_has_example_audio</code> · <code>_has_example</code> · <code>_has_notes</code></p>
+                <p>Examples: <code>food</code> &nbsp;·&nbsp; <code>food OR travel</code> &nbsp;·&nbsp; <code>(food OR travel) AND beginner</code> &nbsp;·&nbsp; <code>_has_expression_audio AND NOT _has_tags</code></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <div class="action-primary">
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+        <a href="{{ url_for('deck_detail', deck_id=deck.id) }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

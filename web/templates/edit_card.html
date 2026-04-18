@@ -9,6 +9,7 @@
 </div>
 
 <form method="POST" class="edit-form" id="edit-form" onkeydown="if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA')event.preventDefault()">
+    <input type="hidden" name="return_url" value="{{ return_url }}">
 
     <div class="field-group">
         <h2>{{ deck.source_language }}</h2>
@@ -96,6 +97,22 @@
 
     <div class="field-group">
         <div class="field">
+            <label>Tags</label>
+            <div id="edit-tag-chips" class="tag-chips">
+                {% for tag in card.tags %}
+                <span class="tag-chip" data-tag="{{ tag.name }}">{{ tag.name }}<button class="tag-remove" type="button" aria-label="Remove tag">×</button></span>
+                {% endfor %}
+            </div>
+            <div class="tag-input-row">
+                <input type="text" id="tag-input" class="tag-input" placeholder="Add a tag…" autocomplete="off">
+                <button type="button" id="tag-add-btn" class="btn-suggest">Add</button>
+            </div>
+            <div id="edit-tag-autocomplete" class="tag-autocomplete hidden"></div>
+        </div>
+    </div>
+
+    <div class="field-group">
+        <div class="field">
             <label for="notes">Notes</label>
             <textarea id="notes" name="notes" rows="3">{{ card.notes or '' }}</textarea>
         </div>
@@ -178,6 +195,7 @@
                 btn.textContent = 'Suggest';
             }
         });
+
         // Audio invalidation tracking
         function setupAudioInvalidation(inputId, warningId, playerId) {
             const input   = document.getElementById(inputId);
@@ -304,6 +322,116 @@
                 btn.textContent = 'Translate from {{ deck.source_language }}';
             }
         });
+
+        // ── Tags ──────────────────────────────────────────────────────────
+
+        const CARD_ID = {{ card.id }};
+        const DECK_ID = {{ deck.id }};
+
+        function renderTagChips(tags) {
+            const chipsEl = document.getElementById('edit-tag-chips');
+            chipsEl.innerHTML = '';
+            tags.forEach(name => {
+                const chip       = document.createElement('span');
+                chip.className   = 'tag-chip';
+                chip.dataset.tag = name;
+                chip.textContent = name;
+                const btn        = document.createElement('button');
+                btn.type         = 'button';
+                btn.className    = 'tag-remove';
+                btn.setAttribute('aria-label', 'Remove tag');
+                btn.textContent  = '×';
+                btn.addEventListener('click', () => removeTag(name));
+                chip.appendChild(btn);
+                chipsEl.appendChild(chip);
+            });
+        }
+
+        async function addTag(name) {
+            name = name.trim();
+            if (!name) return;
+            try {
+                const resp = await fetch('/card/' + CARD_ID + '/tags/add', {
+                    method:  'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body:    JSON.stringify({name}),
+                });
+                const data = await resp.json();
+                if (!data.error) renderTagChips(data.tags);
+            } catch (_) {}
+        }
+
+        async function removeTag(name) {
+            try {
+                const resp = await fetch('/card/' + CARD_ID + '/tags/remove', {
+                    method:  'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body:    JSON.stringify({name}),
+                });
+                const data = await resp.json();
+                if (!data.error) renderTagChips(data.tags);
+            } catch (_) {}
+        }
+
+        // Wire remove buttons on initial server-rendered chips
+        document.querySelectorAll('#edit-tag-chips .tag-remove').forEach(btn => {
+            const chip = btn.closest('.tag-chip');
+            btn.addEventListener('click', () => removeTag(chip.dataset.tag));
+        });
+
+        const tagInput  = document.getElementById('tag-input');
+        const tagAddBtn = document.getElementById('tag-add-btn');
+        const tagAcEl   = document.getElementById('edit-tag-autocomplete');
+        let   _tagTimer = null;
+
+        function addCurrent() {
+            const name = tagInput.value.trim();
+            if (!name) return;
+            tagInput.value = '';
+            tagAcEl.classList.add('hidden');
+            tagAcEl.innerHTML = '';
+            addTag(name);
+        }
+
+        tagAddBtn.addEventListener('click', addCurrent);
+
+        tagInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); addCurrent(); }
+            if (e.key === 'Escape') { tagAcEl.classList.add('hidden'); tagAcEl.innerHTML = ''; }
+        });
+
+        tagInput.addEventListener('input', () => {
+            clearTimeout(_tagTimer);
+            const q = tagInput.value.trim();
+            if (!q) { tagAcEl.classList.add('hidden'); tagAcEl.innerHTML = ''; return; }
+            _tagTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch('/deck/' + DECK_ID + '/tags?q=' + encodeURIComponent(q));
+                    const data = await resp.json();
+                    tagAcEl.innerHTML = '';
+                    if (!data.tags.length) { tagAcEl.classList.add('hidden'); return; }
+                    data.tags.forEach(name => {
+                        const item       = document.createElement('button');
+                        item.type        = 'button';
+                        item.className   = 'tag-ac-item';
+                        item.textContent = name;
+                        item.addEventListener('mousedown', e => {
+                            e.preventDefault();
+                            tagInput.value = '';
+                            tagAcEl.classList.add('hidden');
+                            tagAcEl.innerHTML = '';
+                            addTag(name);
+                        });
+                        tagAcEl.appendChild(item);
+                    });
+                    tagAcEl.classList.remove('hidden');
+                } catch (_) {}
+            }, 200);
+        });
+
+        tagInput.addEventListener('blur', () => {
+            setTimeout(() => { tagAcEl.classList.add('hidden'); tagAcEl.innerHTML = ''; }, 150);
+        });
     </script>
 
     <input type="hidden" id="audio-expression-b64" name="expression_audio_b64">
@@ -314,7 +442,7 @@
             <button type="submit" class="btn btn-primary">Save</button>
             <span class="kbd-hint">⌘ Return</span>
         </div>
-        <a href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn btn-secondary">Cancel</a>
+        <a href="{{ return_url }}" class="btn btn-secondary">Cancel</a>
     </div>
 
 </form>

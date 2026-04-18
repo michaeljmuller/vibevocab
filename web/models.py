@@ -3,6 +3,12 @@ from sqlalchemy.orm import deferred
 
 db = SQLAlchemy()
 
+# Association table for Card <-> Tag many-to-many
+card_tags = db.Table('card_tags',
+    db.Column('card_id', db.Integer, db.ForeignKey('cards.id'), primary_key=True),
+    db.Column('tag_id',  db.Integer, db.ForeignKey('tags.id'),  primary_key=True)
+)
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -25,6 +31,24 @@ class Deck(db.Model):
     updated_at      = db.Column(db.DateTime, nullable=False)
 
 
+class Tag(db.Model):
+    __tablename__ = 'tags'
+    id      = db.Column(db.Integer, primary_key=True)
+    deck_id = db.Column(db.Integer, db.ForeignKey('decks.id'), nullable=False)
+    name    = db.Column(db.Text, nullable=False)
+    # Uniqueness enforced case-insensitively by ix_tags_deck_id_name index in the DB
+
+
+class StudySet(db.Model):
+    __tablename__ = 'study_sets'
+    id         = db.Column(db.Integer, primary_key=True)
+    deck_id    = db.Column(db.Integer, db.ForeignKey('decks.id'), nullable=False)
+    name       = db.Column(db.Text, nullable=False)
+    tag_query  = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False)
+
+
 class Card(db.Model):
     __tablename__ = 'cards'
     id                = db.Column(db.Integer, primary_key=True)
@@ -41,3 +65,4 @@ class Card(db.Model):
     example_audio     = deferred(db.Column(db.LargeBinary))
     created_at        = db.Column(db.DateTime, nullable=False)
     updated_at        = db.Column(db.DateTime, nullable=False)
+    tags              = db.relationship('Tag', secondary=card_tags, lazy='select')
