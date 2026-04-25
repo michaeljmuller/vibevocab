@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ deck.name }} — Words — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="words-toolbar">
+    <a href="{{ url_for('deck_detail', deck_id=deck.id) }}" class="btn btn-secondary btn-sm">← {{ deck.name }}</a>
+    <label class="words-examples-toggle">
+        <input type="checkbox" id="words-show-examples">
+        <span>Examples</span>
+    </label>
+    <input type="text" id="words-search" class="words-search" placeholder="Filter…" autocomplete="off">
+    <span id="words-count" class="words-count"></span>
+</div>
+
+<table class="words-table" id="words-table">
+    <colgroup>
+        <col style="width:8%">
+        <col style="width:38%">
+        <col style="width:34%">
+        <col style="width:20%">
+    </colgroup>
+    <thead>
+        <tr>
+            <th></th>
+            <th class="sortable" data-col="source">Source <span class="sort-arrow"></span></th>
+            <th class="sortable" data-col="target">Target <span class="sort-arrow"></span></th>
+            <th class="sortable" data-col="tags">Tags <span class="sort-arrow"></span></th>
+        </tr>
+    </thead>
+    {% for card in cards %}
+    <tbody class="card-group"
+           data-source="{{ card.source_expression|lower }}"
+           data-target="{{ card.target_expression|lower }}"
+           data-pos="{{ card.part_of_speech or '' }}"
+           data-tags="{{ card.tags|map(attribute='name')|join(' ')|lower }}">
+        {% set has_expr_audio, has_ex_audio = audio_map.get(card.id, (False, False)) %}
+        <tr class="card-main">
+            <td><a href="{{ url_for('edit_card', card_id=card.id, return_url=request.path) }}" class="btn-edit-small">Edit</a></td>
+            <td><div class="cell-flex"><span class="cell-text">{{ card.source_expression }}{% if card.part_of_speech %} <span class="pos-inline">({{ card.part_of_speech }})</span>{% endif %}</span></div></td>
+            <td><div class="cell-flex"><span class="cell-text">{{ card.target_expression }}</span>{% if has_expr_audio %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='expression') }}">🔊</button>{% endif %}</div></td>
+            <td>{% for tag in card.tags %}<span class="tag-chip tag-chip-sm">{{ tag.name }}</span>{% endfor %}</td>
+        </tr>
+        {% if card.source_example or card.target_example %}
+        <tr class="card-examples">
+            <td></td>
+            <td><div class="cell-flex"><span class="cell-text">{{ card.source_example or '' }}</span></div></td>
+            <td><div class="cell-flex"><span class="cell-text">{{ card.target_example or '' }}</span>{% if has_ex_audio and card.target_example %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='example') }}">🔊</button>{% endif %}</div></td>
+            <td></td>
+        </tr>
+        {% endif %}
+    </tbody>
+    {% endfor %}
+</table>
+
+<script>
+(function () {
+    const table = document.getElementById('words-table');
+    const search = document.getElementById('words-search');
+    const countEl = document.getElementById('words-count');
+    const showExamples = document.getElementById('words-show-examples');
+    const colKeys = ['source', 'target', 'pos', 'tags']; // pos kept for filter
+    let sortCol = 'source';
+    let sortAsc = true;
+
+    function groups() { return Array.from(table.querySelectorAll('tbody.card-group')); }
+
+    function applySort() {
+        groups().sort((a, b) => {
+            const ka = a.dataset[sortCol] || '', kb = b.dataset[sortCol] || '';
+            return sortAsc ? ka.localeCompare(kb) : kb.localeCompare(ka);
+        }).forEach(g => table.appendChild(g));
+        document.querySelectorAll('.words-table th.sortable').forEach(th => {
+            const active = th.dataset.col === sortCol;
+            th.classList.toggle('sort-active', active);
+            th.querySelector('.sort-arrow').textContent = active ? (sortAsc ? '↑' : '↓') : '↕';
+        });
+    }
+
+    function applyFilter() {
+        const q = search.value.toLowerCase();
+        let visible = 0;
+        groups().forEach(g => {
+            const show = !q || colKeys.some(k => (g.dataset[k] || '').includes(q));
+            g.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const total = groups().length;
+        countEl.textContent = q ? `${visible} of ${total}` : `${total}`;
+    }
+
+    document.querySelectorAll('.words-table th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (sortCol === col) sortAsc = !sortAsc;
+            else { sortCol = col; sortAsc = true; }
+            applySort();
+        });
+    });
+
+    search.addEventListener('input', applyFilter);
+
+    showExamples.addEventListener('change', () => {
+        table.classList.toggle('show-examples', showExamples.checked);
+    });
+
+    applySort();
+    applyFilter();
+    search.focus();
+
+    let activeAudio = null;
+    document.getElementById('words-table').addEventListener('click', e => {
+        const btn = e.target.closest('.btn-audio');
+        if (!btn) return;
+        if (activeAudio) {
+            activeAudio.audio.pause();
+            activeAudio.btn.classList.remove('playing');
+            if (activeAudio.btn === btn) { activeAudio = null; return; }
+        }
+        const audio = new Audio(btn.dataset.src);
+        activeAudio = { audio, btn };
+        btn.classList.add('playing');
+        audio.play();
+        audio.addEventListener('ended', () => {
+            btn.classList.remove('playing');
+            activeAudio = null;
+        });
+    });
+})();
+
+(function () {
+    const table = document.getElementById('words-table');
+    const ths = Array.from(table.querySelectorAll('thead th'));
+
+    for (let i = 1; i < ths.length - 1; i++) {
+        const th = ths[i];
+        const next = ths[i + 1];
+        const handle = document.createElement('div');
+        handle.className = 'col-resize-handle';
+        th.appendChild(handle);
+
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            const tableW = table.offsetWidth;
+            const startX = e.clientX;
+            const startW = th.offsetWidth;
+            const nextStartW = next.offsetWidth;
+            handle.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            function onMove(e) {
+                const d = e.clientX - startX;
+                const newW = Math.max(40, startW + d);
+                const newNextW = Math.max(40, nextStartW - (newW - startW));
+                th.style.width = (newW / tableW * 100).toFixed(2) + '%';
+                next.style.width = (newNextW / tableW * 100).toFixed(2) + '%';
+            }
+
+            function onUp() {
+                handle.classList.remove('resizing');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+})();
+</script>
+{% endblock %}

@@ -36,5 +36,6 @@
 <div class="actions" style="margin-top: 1.5rem">
     <a href="{{ url_for('new_study_set', deck_id=deck.id) }}" class="btn btn-primary">New study set</a>
     <a href="{{ url_for('add_card', deck_id=deck.id) }}" class="btn btn-secondary">Add card</a>
+    <a href="{{ url_for('deck_words', deck_id=deck.id) }}" class="btn btn-secondary">Browse words</a>
 </div>
 {% endblock %}

@@ -55,6 +55,10 @@ def expected_answer(card, target_language):
     return card.target_expression
 
 
+def _clean_expression(value):
+    return ' '.join(value.split())
+
+
 def _safe_return_url(url, fallback):
     """Validate that a return URL is a local path to prevent open redirect."""
     if url and url.startswith('/') and not url.startswith('//'):
@@ -246,7 +250,7 @@ def edit_card(card_id):
     fallback_url = url_for('quiz', deck_id=deck.id)
 
     if request.method == 'POST':
-        new_target_expression = request.form['target_expression'].strip()
+        new_target_expression = _clean_expression(request.form['target_expression'])
         new_target_example    = request.form.get('target_example', '').strip() or None
         expression_audio_b64  = request.form.get('expression_audio_b64', '').strip()
         example_audio_b64     = request.form.get('example_audio_b64', '').strip()
@@ -261,7 +265,7 @@ def edit_card(card_id):
         elif new_target_example != card.target_example:
             card.example_audio = None
 
-        card.source_expression = request.form['source_expression'].strip()
+        card.source_expression = _clean_expression(request.form['source_expression'])
         card.source_example    = request.form.get('source_example', '').strip() or None
         card.target_expression = new_target_expression
         card.target_example    = new_target_example
@@ -292,9 +296,9 @@ def add_card(deck_id):
         example_audio_b64    = request.form.get('example_audio_b64', '').strip()
         card = Card(
             deck_id=deck_id,
-            source_expression=request.form['source_expression'].strip(),
+            source_expression=_clean_expression(request.form['source_expression']),
             source_example=request.form.get('source_example', '').strip() or None,
-            target_expression=request.form['target_expression'].strip(),
+            target_expression=_clean_expression(request.form['target_expression']),
             target_example=request.form.get('target_example', '').strip() or None,
             part_of_speech=request.form.get('part_of_speech') or None,
             noun_gender=request.form.get('noun_gender') or None,
@@ -307,7 +311,7 @@ def add_card(deck_id):
         db.session.flush()
         for tag_name in request.form.getlist('tag'):
             tag_name = tag_name.strip()
-            if not tag_name:
+            if not tag_name or any(c.isspace() for c in tag_name):
                 continue
             tag = Tag.query.filter(Tag.deck_id == deck_id,
                                    db.func.lower(Tag.name) == tag_name.lower()).first()
@@ -359,6 +363,24 @@ def quiz_check(deck_id):
     return _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url)
 
 
+@app.route('/deck/<int:deck_id>/words')
+def deck_words(deck_id):
+    from sqlalchemy import text
+    from sqlalchemy.orm import joinedload
+    deck = Deck.query.get_or_404(deck_id)
+    cards = (Card.query
+             .filter_by(deck_id=deck_id)
+             .options(joinedload(Card.tags))
+             .order_by(Card.source_expression)
+             .all())
+    rows = db.session.execute(
+        text('SELECT id, expression_audio IS NOT NULL, example_audio IS NOT NULL FROM cards WHERE deck_id = :did'),
+        {'did': deck_id}
+    ).fetchall()
+    audio_map = {r[0]: (bool(r[1]), bool(r[2])) for r in rows}
+    return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map)
+
+
 @app.route('/deck/<int:deck_id>/tags')
 def deck_tags(deck_id):
     """Return JSON list of tag names in this deck, optionally filtered by prefix."""
@@ -378,8 +400,8 @@ def card_tag_add(card_id):
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify(error='Tag name required'), 400
-    if ' ' in name:
-        return jsonify(error='Tag names may not contain spaces'), 400
+    if any(c.isspace() for c in name):
+        return jsonify(error='Tag names may not contain whitespace'), 400
 
     # Find or create the tag (case-insensitive, stored as-entered on first create)
     tag = Tag.query.filter(Tag.deck_id == card.deck_id,
