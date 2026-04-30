@@ -52,6 +52,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      backup:
+        condition: service_completed_successfully
+
+  backup:
+    image: postgres:16
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
+      PGUSER: ${POSTGRES_USER:-vibevocab}
+      PGDATABASE: ${POSTGRES_DB:-vibevocab}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    command: bash -c "pg_dump -h db -f /backups/backup_$$(date +%Y%m%d_%H%M%S).sql && echo 'Backup complete.'"
+    restart: "no"
 
   ingest:
     build: ./ingest
