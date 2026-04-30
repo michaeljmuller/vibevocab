@@ -1,1 +1,8 @@
 - track model usage / expense
+- handle two valid responses for an entry ("dentist's office" --> "consultório dentistal / consultório do dentista")
+- handle nouns that vary in gender based on the subject (teacher -> professor / professora)
+- handle nouns whose gender varies based on the subject (artist -> o artista / a artista)
+- factor the dictionary code out into a separate re-usable library (for both vibeedit and vibevocab)
+- link to dictionary entry
+- make sure the prompt for the suggestion tool emphasizes pt-pt (rather than pt-br)
+- when the user selects "noun", try to guess the gender of -a / -a words

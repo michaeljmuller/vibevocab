@@ -1,4 +1,5 @@
 ingest/
+.playwright-mcp/
 
 # Python
 __pycache__/
