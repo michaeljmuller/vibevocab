@@ -7,3 +7,5 @@ that uses "${target_expression}".
 
 Sentences should suit an intermediate language learner:
 everyday vocabulary, varied in structure, and as concise as possible while effectively illustrating the word/expression's use.
+
+Examples MUST be colloquial to the ${target_language} region and not primarily used in other regions.
