@@ -40,10 +40,12 @@ def audio_status(card_id):
 
 
 def get_article(noun_gender, noun_is_plural, language):
-    """Return the definite article for a noun, or None if unknown."""
+    """Return the definite article for a noun, or None if unknown.
+    For 'both' gender, returns the masculine article (used for audio)."""
     lang = language.split('-')[0].lower()
     table = _ARTICLES.get(lang, {})
-    return table.get((noun_gender, bool(noun_is_plural)))
+    gender = 'masculine' if noun_gender == 'both' else noun_gender
+    return table.get((gender, bool(noun_is_plural)))
 
 
 def expected_answer(card, target_language):
@@ -87,7 +89,13 @@ def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url):
                                    check_url=check_url, next_url=next_url, return_url=return_url)
 
     full    = expected_answer(card, deck.target_language)
-    correct = answer.lower() == full.lower()
+    if card.part_of_speech == 'noun' and card.noun_gender == 'both':
+        lang = deck.target_language
+        fem_article = get_article('feminine', card.noun_is_plural, lang)
+        fem_full = f"{fem_article} {card.target_expression}" if fem_article else None
+        correct = answer.lower() == full.lower() or (fem_full is not None and answer.lower() == fem_full.lower())
+    else:
+        correct = answer.lower() == full.lower()
     has_expr, has_ex = audio_status(card.id)
     return render_template('quiz.html', deck=deck, card=card, state='back',
                            answer=answer, correct=correct, full_answer=full,
@@ -240,7 +248,11 @@ PARTS_OF_SPEECH = [
     'interjection', 'noun', 'other', 'preposition', 'pronoun', 'verb',
 ]
 
-NOUN_GENDERS = ['masculine', 'feminine']
+NOUN_GENDERS = [
+    ('masculine',  'masculine'),
+    ('feminine',   'feminine'),
+    ('both',       'masculine and feminine'),
+]
 
 
 @app.route('/card/<int:card_id>/edit', methods=['GET', 'POST'])
@@ -279,11 +291,12 @@ def edit_card(card_id):
         return redirect(return_url)
 
     return_url = _safe_return_url(request.args.get('return_url'), fallback_url)
+    all_tags   = Tag.query.filter_by(deck_id=card.deck_id).order_by(Tag.name).all()
     return render_template('edit_card.html', card=card, deck=deck,
                            parts_of_speech=PARTS_OF_SPEECH, noun_genders=NOUN_GENDERS,
                            has_expression_audio=card.expression_audio is not None,
                            has_example_audio=card.example_audio is not None,
-                           return_url=return_url)
+                           all_tags=all_tags, return_url=return_url)
 
 
 @app.route('/deck/<int:deck_id>/cards/new', methods=['GET', 'POST'])
@@ -333,10 +346,11 @@ def add_card(deck_id):
         expression_audio=None, example_audio=None,
     )
     return_url = _safe_return_url(request.args.get('return_url'), fallback_url)
+    all_tags   = Tag.query.filter_by(deck_id=deck_id).order_by(Tag.name).all()
     return render_template('edit_card.html', card=stub, deck=deck,
                            parts_of_speech=PARTS_OF_SPEECH, noun_genders=NOUN_GENDERS,
                            has_expression_audio=False, has_example_audio=False,
-                           return_url=return_url,
+                           all_tags=all_tags, return_url=return_url,
                            form_action=url_for('add_card', deck_id=deck_id))
 
 
@@ -378,7 +392,8 @@ def deck_words(deck_id):
         {'did': deck_id}
     ).fetchall()
     audio_map = {r[0]: (bool(r[1]), bool(r[2])) for r in rows}
-    return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map)
+    all_tags  = Tag.query.filter_by(deck_id=deck_id).order_by(Tag.name).all()
+    return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map, all_tags=all_tags)
 
 
 @app.route('/deck/<int:deck_id>/tags')

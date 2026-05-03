@@ -57,8 +57,8 @@
             <div class="noun-gender-row">
                 <select id="noun_gender" name="noun_gender">
                     <option value="">—</option>
-                    {% for g in noun_genders %}
-                    <option value="{{ g }}" {{ 'selected' if card.noun_gender == g }}>{{ g }}</option>
+                    {% for value, label in noun_genders %}
+                    <option value="{{ value }}" {{ 'selected' if card.noun_gender == value }}>{{ label }}</option>
                     {% endfor %}
                 </select>
                 <label class="checkbox-label">
@@ -103,6 +103,9 @@
 
     <div class="field-group">
         <div class="field">
+            {% if all_tags %}
+            <div id="deck-tag-palette" class="deck-tag-palette"></div>
+            {% endif %}
             <div class="tag-input-row">
                 <input type="text" id="tag-input" class="tag-input" placeholder="Add a tag…" autocomplete="off">
                 <button type="button" id="tag-add-btn" class="btn-suggest">Add</button>
@@ -356,7 +359,25 @@
 
         // ── Tags ──────────────────────────────────────────────────────────
 
-        const DECK_ID = {{ deck.id }};
+        const DECK_ID       = {{ deck.id }};
+        const ALL_DECK_TAGS = {{ all_tags|map(attribute='name')|list|tojson if all_tags else '[]' }};
+        const INITIAL_TAGS  = {{ card.tags|map(attribute='name')|list|tojson }};
+
+        function renderTagPalette(assignedNames) {
+            const palette = document.getElementById('deck-tag-palette');
+            if (!palette) return;
+            const assigned = new Set(assignedNames.map(n => n.toLowerCase()));
+            palette.innerHTML = '';
+            ALL_DECK_TAGS.forEach(name => {
+                const isAssigned = assigned.has(name.toLowerCase());
+                const btn = document.createElement('button');
+                btn.type      = 'button';
+                btn.className = 'tag-pal-chip' + (isAssigned ? ' assigned' : '');
+                btn.textContent = name;
+                btn.addEventListener('click', () => isAssigned ? removeTag(name) : addTag(name));
+                palette.appendChild(btn);
+            });
+        }
 
         function renderTagChips(tags) {
             const chipsEl = document.getElementById('edit-tag-chips');
@@ -375,6 +396,7 @@
                 chip.appendChild(btn);
                 chipsEl.appendChild(chip);
             });
+            renderTagPalette(tags);
         }
 
         {% if card.id %}
@@ -437,6 +459,8 @@
             _syncTagInputs();
         }
         {% endif %}
+
+        renderTagPalette(INITIAL_TAGS);
 
         const tagInput  = document.getElementById('tag-input');
         const tagAddBtn = document.getElementById('tag-add-btn');

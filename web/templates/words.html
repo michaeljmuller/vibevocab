@@ -12,6 +12,13 @@
     <input type="text" id="words-search" class="words-search" placeholder="Filter…" autocomplete="off">
     <span id="words-count" class="words-count"></span>
 </div>
+{% if all_tags %}
+<div class="words-tag-bar" id="words-tag-bar">
+    {% for tag in all_tags %}
+    <button type="button" class="tag-filter-chip" data-tag="{{ tag.name|lower }}">{{ tag.name }}</button>
+    {% endfor %}
+</div>
+{% endif %}
 
 <table class="words-table" id="words-table">
     <colgroup>
@@ -103,7 +110,27 @@
         });
     });
 
-    search.addEventListener('input', applyFilter);
+    search.addEventListener('input', () => {
+        document.querySelectorAll('.tag-filter-chip').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tag === search.value.toLowerCase());
+        });
+        applyFilter();
+    });
+
+    document.querySelectorAll('.tag-filter-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tag = btn.dataset.tag;
+            if (search.value.toLowerCase() === tag) {
+                search.value = '';
+                btn.classList.remove('active');
+            } else {
+                search.value = tag;
+                document.querySelectorAll('.tag-filter-chip').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            applyFilter();
+        });
+    });
 
     showExamples.addEventListener('change', () => {
         table.classList.toggle('show-examples', showExamples.checked);

@@ -709,6 +709,38 @@ h1 {
     text-align: right;
 }
 
+.words-tag-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.tag-filter-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    padding: 0.1rem 0.4rem;
+    background: #dbe9f5;
+    color: #1e4a6e;
+    border-radius: 3px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.tag-filter-chip:hover {
+    background: #c5d9eb;
+}
+
+.tag-filter-chip.active {
+    background: #2c5f8a;
+    color: #fff;
+    border-color: #1e4a6e;
+}
+
 .words-table {
     width: 100%;
     table-layout: fixed;
@@ -841,6 +873,42 @@ h1 {
 .col-resize-handle.resizing {
     border-color: #2c5f8a;
     background: rgba(44, 95, 138, 0.15);
+}
+
+.deck-tag-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.tag-pal-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    padding: 0.1rem 0.4rem;
+    background: #fff;
+    color: #5580a0;
+    border: 1px solid #c5d9eb;
+    border-radius: 3px;
+    white-space: nowrap;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, color 0.1s;
+}
+
+.tag-pal-chip:hover {
+    background: #eef4fa;
+}
+
+.tag-pal-chip.assigned {
+    background: #dbe9f5;
+    color: #1e4a6e;
+    border-color: #b0cde5;
+    font-weight: 500;
+}
+
+.tag-pal-chip.assigned:hover {
+    background: #c5d9eb;
 }
 
 .tag-chip-sm {
