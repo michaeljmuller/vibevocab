@@ -67,3 +67,29 @@ class Card(db.Model):
     created_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     tags              = db.relationship('Tag', secondary=card_tags, lazy='select')
+
+
+class CardProgress(db.Model):
+    __tablename__ = 'card_progress'
+    id               = db.Column(db.Integer, primary_key=True)
+    user_id          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    card_id          = db.Column(db.Integer, db.ForeignKey('cards.id'), nullable=False)
+    ease_factor      = db.Column(db.Float, nullable=False, default=2.5)
+    interval_days    = db.Column(db.Integer, nullable=False, default=1)
+    repetitions      = db.Column(db.Integer, nullable=False, default=0)
+    next_review_at   = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_reviewed_at = db.Column(db.DateTime)
+    created_at       = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at       = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReviewLog(db.Model):
+    __tablename__ = 'review_log'
+    id               = db.Column(db.Integer, primary_key=True)
+    user_id          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    card_id          = db.Column(db.Integer, db.ForeignKey('cards.id'), nullable=False)
+    typed_answer     = db.Column(db.Text, nullable=False)
+    quality_score    = db.Column(db.Integer, nullable=False)
+    response_time_ms = db.Column(db.Integer, nullable=False)
+    was_overridden   = db.Column(db.Boolean, nullable=False, default=False)
+    reviewed_at      = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

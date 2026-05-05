@@ -1,9 +1,11 @@
 import os
 import base64
 import types
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response
-from models import db, User, Deck, Card, Tag, StudySet
+from sqlalchemy import text
+from models import db, User, Deck, Card, Tag, StudySet, CardProgress, ReviewLog
+from srs import sm2, quality_from_result, familiarity_label
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = (
@@ -68,16 +70,53 @@ def _safe_return_url(url, fallback):
     return fallback
 
 
-def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url):
+def _record_review(user, card, typed_answer, quality, response_time_ms):
+    """Record a review log entry and update card_progress. Returns the updated CardProgress."""
+    now = datetime.utcnow()
+    db.session.add(ReviewLog(
+        user_id=user.id, card_id=card.id,
+        typed_answer=typed_answer, quality_score=quality,
+        response_time_ms=response_time_ms, was_overridden=False,
+        reviewed_at=now,
+    ))
+    progress = CardProgress.query.filter_by(user_id=user.id, card_id=card.id).first()
+    if progress is None:
+        progress = CardProgress(
+            user_id=user.id, card_id=card.id,
+            ease_factor=2.5, interval_days=1, repetitions=0,
+            next_review_at=now, created_at=now, updated_at=now,
+        )
+        db.session.add(progress)
+    new_ef, new_interval, new_reps = sm2(
+        progress.ease_factor, progress.interval_days, progress.repetitions, quality
+    )
+    progress.ease_factor      = new_ef
+    progress.interval_days    = new_interval
+    progress.repetitions      = new_reps
+    progress.next_review_at   = now + timedelta(days=new_interval)
+    progress.last_reviewed_at = now
+    progress.updated_at       = now
+    db.session.commit()
+    return progress
+
+
+def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url, user=None, response_time_ms=0):
     """Shared quiz answer-checking logic for deck and study-set quiz routes."""
     if action == 'flip':
         has_expr, has_ex = audio_status(card.id)
+        progress = None
+        if user:
+            quality  = quality_from_result(correct=False, was_flipped=True, response_time_ms=response_time_ms)
+            progress = _record_review(user, card, typed_answer='', quality=quality,
+                                      response_time_ms=response_time_ms)
         return render_template('quiz.html', deck=deck, card=card, state='back',
                                answer=None, correct=None,
                                full_answer=expected_answer(card, deck.target_language),
                                has_expression_audio=has_expr, has_example_audio=has_ex,
                                audio_pause_ms=int(os.environ.get('CARD_FLIP_INTER_AUDIO_PAUSE_MS', '1500')),
-                               check_url=check_url, next_url=next_url, return_url=return_url)
+                               check_url=check_url, next_url=next_url, return_url=return_url,
+                               progress=progress,
+                               familiarity=familiarity_label(progress.repetitions) if progress else None)
 
     # For nouns: check whether the user omitted the article entirely.
     if card.part_of_speech == 'noun' and card.noun_gender:
@@ -88,7 +127,7 @@ def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url):
                                    expected_article=article,
                                    check_url=check_url, next_url=next_url, return_url=return_url)
 
-    full    = expected_answer(card, deck.target_language)
+    full = expected_answer(card, deck.target_language)
     if card.part_of_speech == 'noun' and card.noun_gender == 'both':
         lang = deck.target_language
         fem_article = get_article('feminine', card.noun_is_plural, lang)
@@ -96,12 +135,22 @@ def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url):
         correct = answer.lower() == full.lower() or (fem_full is not None and answer.lower() == fem_full.lower())
     else:
         correct = answer.lower() == full.lower()
+
+    progress = None
+    if user:
+        quality  = quality_from_result(correct=correct, was_flipped=False,
+                                       response_time_ms=response_time_ms)
+        progress = _record_review(user, card, typed_answer=answer, quality=quality,
+                                  response_time_ms=response_time_ms)
+
     has_expr, has_ex = audio_status(card.id)
     return render_template('quiz.html', deck=deck, card=card, state='back',
                            answer=answer, correct=correct, full_answer=full,
                            has_expression_audio=has_expr, has_example_audio=has_ex,
                            audio_pause_ms=int(os.environ.get('AUDIO_PAUSE_MS', '1500')),
-                           check_url=check_url, next_url=next_url, return_url=return_url)
+                           check_url=check_url, next_url=next_url, return_url=return_url,
+                           progress=progress,
+                           familiarity=familiarity_label(progress.repetitions) if progress else None)
 
 
 @app.route('/')
@@ -118,10 +167,52 @@ def decks():
 
 @app.route('/deck/<int:deck_id>')
 def deck_detail(deck_id):
+    from query_parser import build_filter, QueryParseError
+    user       = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
     deck       = Deck.query.get_or_404(deck_id)
     study_sets = StudySet.query.filter_by(deck_id=deck_id).order_by(StudySet.name).all()
     card_count = Card.query.filter_by(deck_id=deck_id).count()
-    return render_template('deck.html', deck=deck, study_sets=study_sets, card_count=card_count)
+
+    progress_rows = db.session.execute(
+        text('SELECT cp.card_id, cp.repetitions FROM card_progress cp '
+             'JOIN cards c ON c.id = cp.card_id '
+             'WHERE c.deck_id = :did AND cp.user_id = :uid'),
+        {'did': deck_id, 'uid': user.id}
+    ).fetchall()
+    progress_by_card = {row[0]: row[1] for row in progress_rows}
+
+    def card_stats(card_ids):
+        total = len(card_ids)
+        if not total:
+            return None
+        counts = {'Unlearned': 0, 'Learning': 0, 'Familiar': 0, 'Known': 0}
+        for cid in card_ids:
+            counts[familiarity_label(progress_by_card.get(cid) or 0)] += 1
+        pcts = {k: round(v * 100 / total) for k, v in counts.items()}
+        return {'total': total, 'pcts': pcts}
+
+    all_ids = [r[0] for r in db.session.execute(
+        text('SELECT id FROM cards WHERE deck_id = :did'), {'did': deck_id}
+    ).fetchall()]
+    all_cards_stats = card_stats(all_ids)
+
+    study_set_counts = {}
+    study_set_stats  = {}
+    for ss in study_sets:
+        try:
+            filt = build_filter(ss.tag_query, deck_id)
+            ids  = [r[0] for r in Card.query.filter_by(deck_id=deck_id)
+                                             .filter(filt)
+                                             .with_entities(Card.id).all()]
+            study_set_counts[ss.id] = len(ids)
+            study_set_stats[ss.id]  = card_stats(ids)
+        except QueryParseError:
+            study_set_counts[ss.id] = None
+            study_set_stats[ss.id]  = None
+
+    return render_template('deck.html', deck=deck, study_sets=study_sets,
+                           card_count=card_count, study_set_counts=study_set_counts,
+                           study_set_stats=study_set_stats, all_cards_stats=all_cards_stats)
 
 
 @app.route('/deck/<int:deck_id>/study-sets/new', methods=['GET', 'POST'])
@@ -198,14 +289,20 @@ def delete_study_set(set_id):
 @app.route('/study-set/<int:set_id>/quiz')
 def study_set_quiz(set_id):
     from query_parser import build_filter, QueryParseError
+    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
     try:
         filt = build_filter(study_set.tag_query, deck.id)
-        card = (Card.query.filter_by(deck_id=deck.id)
-                          .filter(filt)
-                          .order_by(db.func.random())
-                          .first_or_404())
+        card = (Card.query
+                .outerjoin(CardProgress, db.and_(
+                    CardProgress.card_id == Card.id,
+                    CardProgress.user_id == user.id,
+                ))
+                .filter(Card.deck_id == deck.id)
+                .filter(filt)
+                .order_by(text("COALESCE(card_progress.next_review_at, '1970-01-01'::timestamp) ASC"))
+                .first_or_404())
     except QueryParseError:
         abort(400)
     check_url  = url_for('study_set_check', set_id=set_id)
@@ -219,21 +316,32 @@ def study_set_quiz(set_id):
 
 @app.route('/study-set/<int:set_id>/check', methods=['POST'])
 def study_set_check(set_id):
+    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
     card      = Card.query.get_or_404(int(request.form['card_id']))
     action    = request.form.get('action')
     answer    = request.form.get('answer', '').strip()
+    response_time_ms = int(request.form.get('response_time_ms', 0))
     check_url  = url_for('study_set_check', set_id=set_id)
     next_url   = url_for('study_set_quiz',  set_id=set_id)
     return_url = url_for('study_set_quiz',  set_id=set_id)
-    return _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url)
+    return _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url,
+                          user=user, response_time_ms=response_time_ms)
 
 
 @app.route('/quiz/<int:deck_id>')
 def quiz(deck_id):
+    user  = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
     deck  = Deck.query.get_or_404(deck_id)
-    card  = Card.query.filter_by(deck_id=deck_id).order_by(db.func.random()).first_or_404()
+    card  = (Card.query
+             .outerjoin(CardProgress, db.and_(
+                 CardProgress.card_id == Card.id,
+                 CardProgress.user_id == user.id,
+             ))
+             .filter(Card.deck_id == deck_id)
+             .order_by(text("COALESCE(card_progress.next_review_at, '1970-01-01'::timestamp) ASC"))
+             .first_or_404())
     check_url  = url_for('quiz_check', deck_id=deck_id)
     next_url   = url_for('quiz',       deck_id=deck_id)
     return_url = url_for('quiz',       deck_id=deck_id)
@@ -367,21 +475,24 @@ def quiz_card(card_id):
 
 @app.route('/quiz/<int:deck_id>/check', methods=['POST'])
 def quiz_check(deck_id):
+    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
     deck      = Deck.query.get_or_404(deck_id)
     card      = Card.query.get_or_404(int(request.form['card_id']))
     action    = request.form.get('action')
     answer    = request.form.get('answer', '').strip()
+    response_time_ms = int(request.form.get('response_time_ms', 0))
     check_url  = url_for('quiz_check', deck_id=deck_id)
     next_url   = url_for('quiz',       deck_id=deck_id)
     return_url = url_for('quiz',       deck_id=deck_id)
-    return _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url)
+    return _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url,
+                          user=user, response_time_ms=response_time_ms)
 
 
 @app.route('/deck/<int:deck_id>/words')
 def deck_words(deck_id):
-    from sqlalchemy import text
     from sqlalchemy.orm import joinedload
-    deck = Deck.query.get_or_404(deck_id)
+    user  = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    deck  = Deck.query.get_or_404(deck_id)
     cards = (Card.query
              .filter_by(deck_id=deck_id)
              .options(joinedload(Card.tags))
@@ -392,8 +503,16 @@ def deck_words(deck_id):
         {'did': deck_id}
     ).fetchall()
     audio_map = {r[0]: (bool(r[1]), bool(r[2])) for r in rows}
+    card_ids  = [c.id for c in cards]
+    progress_list = (CardProgress.query
+                     .filter(CardProgress.user_id == user.id,
+                             CardProgress.card_id.in_(card_ids))
+                     .all()) if card_ids else []
+    progress_map = {p.card_id: p for p in progress_list}
     all_tags  = Tag.query.filter_by(deck_id=deck_id).order_by(Tag.name).all()
-    return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map, all_tags=all_tags)
+    return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map,
+                           all_tags=all_tags, progress_map=progress_map,
+                           familiarity_label=familiarity_label)
 
 
 @app.route('/deck/<int:deck_id>/tags')
@@ -406,6 +525,35 @@ def deck_tags(deck_id):
         tags = tags.filter(db.func.lower(Tag.name).startswith(q))
     tags = tags.order_by(Tag.name).all()
     return jsonify(tags=[t.name for t in tags])
+
+
+@app.route('/card/<int:card_id>/review/override', methods=['POST'])
+def override_review(card_id):
+    user = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    Card.query.get_or_404(card_id)
+    log = (ReviewLog.query
+           .filter_by(user_id=user.id, card_id=card_id)
+           .order_by(ReviewLog.reviewed_at.desc())
+           .first())
+    if log is None:
+        return jsonify(error='No review found'), 404
+    log.was_overridden = True
+    log.quality_score  = 4
+    progress = CardProgress.query.filter_by(user_id=user.id, card_id=card_id).first()
+    if progress:
+        now = datetime.utcnow()
+        new_ef, new_interval, new_reps = sm2(
+            progress.ease_factor, progress.interval_days, progress.repetitions, 4
+        )
+        progress.ease_factor      = new_ef
+        progress.interval_days    = new_interval
+        progress.repetitions      = new_reps
+        progress.next_review_at   = now + timedelta(days=new_interval)
+        progress.updated_at       = now
+    db.session.commit()
+    label = familiarity_label(progress.repetitions) if progress else 'Unlearned'
+    return jsonify(familiarity=label,
+                   next_review_days=progress.interval_days if progress else 1)
 
 
 @app.route('/card/<int:card_id>/tags/add', methods=['POST'])

@@ -2,6 +2,17 @@
 
 {% block title %}{{ deck.name }} — VibeVocab{% endblock %}
 
+{% macro score_bar(stats) %}
+{% if stats %}
+<div class="score-bar" title="Unlearned {{ stats.pcts.Unlearned }}% · Learning {{ stats.pcts.Learning }}% · Familiar {{ stats.pcts.Familiar }}% · Known {{ stats.pcts.Known }}%">
+    {% if stats.pcts.Known     %}<div class="score-seg score-known"     style="width:{{ stats.pcts.Known }}%"></div>{% endif %}
+    {% if stats.pcts.Familiar  %}<div class="score-seg score-familiar"  style="width:{{ stats.pcts.Familiar }}%"></div>{% endif %}
+    {% if stats.pcts.Learning  %}<div class="score-seg score-learning"  style="width:{{ stats.pcts.Learning }}%"></div>{% endif %}
+    {% if stats.pcts.Unlearned %}<div class="score-seg score-unlearned" style="width:{{ stats.pcts.Unlearned }}%"></div>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="deck-header">
     <h1>{{ deck.name }}</h1>
@@ -12,12 +23,18 @@
     <a class="study-set-item study-set-all" href="{{ url_for('quiz', deck_id=deck.id) }}">
         <div class="study-set-name">All cards</div>
         <div class="study-set-meta">{{ card_count }} card{{ 's' if card_count != 1 }}</div>
+        {{ score_bar(all_cards_stats) }}
     </a>
 
     {% for ss in study_sets %}
     <div class="study-set-item">
         <a class="study-set-name" href="{{ url_for('study_set_quiz', set_id=ss.id) }}">{{ ss.name }}</a>
-        <div class="study-set-meta">{{ ss.tag_query }}</div>
+        <div class="study-set-meta">
+            {%- set n = study_set_counts.get(ss.id) -%}
+            {%- if n is not none %}{{ n }} card{{ 's' if n != 1 }} · {% endif -%}
+            {{ ss.tag_query }}
+        </div>
+        {{ score_bar(study_set_stats.get(ss.id)) }}
         <div class="study-set-actions">
             <a href="{{ url_for('edit_study_set', set_id=ss.id) }}" class="btn-suggest">Edit</a>
             <form method="POST" action="{{ url_for('delete_study_set', set_id=ss.id) }}" style="display:inline">

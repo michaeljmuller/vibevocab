@@ -22,11 +22,12 @@
 
 <table class="words-table" id="words-table">
     <colgroup>
-        <col style="width:8%">
-        <col style="width:33%">
-        <col style="width:28%">
-        <col style="width:18%">
-        <col style="width:13%">
+        <col style="width:6%">
+        <col style="width:30%">
+        <col style="width:26%">
+        <col style="width:16%">
+        <col style="width:10%">
+        <col style="width:12%">
     </colgroup>
     <thead>
         <tr>
@@ -35,15 +36,18 @@
             <th class="sortable" data-col="target">Target <span class="sort-arrow"></span></th>
             <th class="sortable" data-col="tags">Tags <span class="sort-arrow"></span></th>
             <th class="sortable" data-col="date">Date <span class="sort-arrow"></span></th>
+            <th class="sortable" data-col="score">Score <span class="sort-arrow"></span></th>
         </tr>
     </thead>
     {% for card in cards %}
+    {% set prog = progress_map.get(card.id) %}
     <tbody class="card-group"
            data-source="{{ card.source_expression|lower }}"
            data-target="{{ card.target_expression|lower }}"
            data-pos="{{ card.part_of_speech or '' }}"
            data-tags="{{ card.tags|map(attribute='name')|join(' ')|lower }}"
-           data-date="{{ card.updated_at.strftime('%Y-%m-%d') }}">
+           data-date="{{ card.updated_at.strftime('%Y-%m-%d') }}"
+           data-score="{{ '%06d' % prog.repetitions if prog else '000000' }}">
         {% set has_expr_audio, has_ex_audio = audio_map.get(card.id, (False, False)) %}
         <tr class="card-main">
             <td><a href="{{ url_for('edit_card', card_id=card.id, return_url=request.path) }}" class="btn-edit-small">Edit</a></td>
@@ -51,12 +55,14 @@
             <td><div class="cell-flex"><span class="cell-text">{{ card.target_expression }}</span>{% if has_expr_audio %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='expression') }}">🔊</button>{% endif %}</div></td>
             <td>{% for tag in card.tags %}<span class="tag-chip tag-chip-sm">{{ tag.name }}</span>{% endfor %}</td>
             <td>{{ card.updated_at.strftime('%Y-%m-%d') }}</td>
+            <td>{% set flabel = familiarity_label(prog.repetitions) if prog else 'Unlearned' %}<span class="familiarity-badge familiarity-{{ flabel|lower }}">{{ flabel }}</span></td>
         </tr>
         {% if card.source_example or card.target_example %}
         <tr class="card-examples">
             <td></td>
             <td><div class="cell-flex"><span class="cell-text">{{ card.source_example or '' }}</span></div></td>
             <td><div class="cell-flex"><span class="cell-text">{{ card.target_example or '' }}</span>{% if has_ex_audio and card.target_example %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='example') }}">🔊</button>{% endif %}</div></td>
+            <td></td>
             <td></td>
             <td></td>
         </tr>
