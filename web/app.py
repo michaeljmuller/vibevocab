@@ -1,4 +1,5 @@
 import os
+import re
 import base64
 import types
 from datetime import datetime, timedelta
@@ -666,7 +667,9 @@ def _with_article(text, part_of_speech, noun_gender, noun_is_plural, language):
     if part_of_speech == 'noun' and noun_gender:
         article = get_article(noun_gender, noun_is_plural, language)
         if article:
-            return f"{article} {text}"
+            text = f"{article} {text}"
+    if not re.search(r'[.!?]\s*$', text):
+        text = f"{text}."
     return text
 
 

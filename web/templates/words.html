@@ -5,6 +5,7 @@
 {% block content %}
 <div class="words-toolbar">
     <a href="{{ url_for('deck_detail', deck_id=deck.id) }}" class="btn btn-secondary btn-sm">← {{ deck.name }}</a>
+    <a href="{{ url_for('add_card', deck_id=deck.id, return_url=request.path) }}" class="btn btn-primary btn-sm">+ Add Card</a>
     <label class="words-examples-toggle">
         <input type="checkbox" id="words-show-examples">
         <span>Examples</span>
