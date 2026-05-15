@@ -153,14 +153,8 @@ document.querySelectorAll('td[data-utc]').forEach(td => {
     search.focus();
 
     let activeAudio = null;
-    document.getElementById('words-table').addEventListener('click', e => {
-        const btn = e.target.closest('.btn-audio');
-        if (!btn) return;
-        if (activeAudio) {
-            activeAudio.audio.pause();
-            activeAudio.btn.classList.remove('playing');
-            if (activeAudio.btn === btn) { activeAudio = null; return; }
-        }
+
+    function startAudio(btn, onEnded) {
         const audio = new Audio(btn.dataset.src);
         activeAudio = { audio, btn };
         btn.classList.add('playing');
@@ -168,7 +162,25 @@ document.querySelectorAll('td[data-utc]').forEach(td => {
         audio.addEventListener('ended', () => {
             btn.classList.remove('playing');
             activeAudio = null;
+            if (onEnded) onEnded();
         });
+    }
+
+    document.getElementById('words-table').addEventListener('click', e => {
+        const btn = e.target.closest('.btn-audio');
+        if (!btn) return;
+        const wasThis = activeAudio?.btn === btn;
+        if (activeAudio) {
+            activeAudio.audio.pause();
+            activeAudio.btn.classList.remove('playing');
+            activeAudio = null;
+        }
+        if (wasThis) return;
+        const cardGroup = btn.closest('tbody.card-group');
+        const exampleBtn = btn.closest('.card-main')
+            ? cardGroup?.querySelector('.card-examples .btn-audio')
+            : null;
+        startAudio(btn, exampleBtn ? () => startAudio(exampleBtn) : null);
     });
 })();
 
