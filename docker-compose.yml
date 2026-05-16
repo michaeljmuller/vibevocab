@@ -52,8 +52,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      backup:
-        condition: service_completed_successfully
 
   backup:
     image: postgres:16
@@ -61,13 +59,16 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
       PGUSER: ${POSTGRES_USER:-vibevocab}
       PGDATABASE: ${POSTGRES_DB:-vibevocab}
+      BACKUP_INACTIVITY_MINUTES: ${BACKUP_INACTIVITY_MINUTES:-15}
+      BACKUP_POLL_SECONDS: ${BACKUP_POLL_SECONDS:-60}
     volumes:
       - ./backups:/backups
+      - ./backup/watcher.sh:/watcher.sh:ro
     depends_on:
       db:
         condition: service_healthy
-    command: bash -c "pg_dump -h db -f /backups/backup_$$(date +%Y%m%d_%H%M%S).sql && echo 'Backup complete.'"
-    restart: "no"
+    command: bash -c "apt-get update -qq && apt-get install -y -qq curl && bash /watcher.sh"
+    restart: unless-stopped
 
   ingest:
     build: ./ingest

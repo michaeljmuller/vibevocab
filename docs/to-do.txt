@@ -8,4 +8,4 @@
 - when the user selects "noun", try to guess the gender of -a / -a words
 - make a "back up now" button.  or back up after some idle period.  block all write operations during backup?
 - add the ability to delete a word/expression (and delete the dupicate entry for apontamento)
-
+- keep track of how much disk space is being used by backups

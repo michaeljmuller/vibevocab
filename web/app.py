@@ -2,10 +2,11 @@ import os
 import re
 import base64
 import types
+import threading
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response
 from sqlalchemy import text
-from models import db, User, Deck, Card, Tag, StudySet, CardProgress, ReviewLog
+from models import db, User, Deck, Card, Tag, StudySet, CardProgress, ReviewLog, DbState
 from srs import sm2, quality_from_result, familiarity_label
 
 app = Flask(__name__)
@@ -17,6 +18,30 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
 db.init_app(app)
+
+@db.event.listens_for(db.session, 'before_commit')
+def _mark_db_modified(session):
+    if session.new or session.dirty or session.deleted:
+        session.execute(text("UPDATE db_state SET last_modified = NOW() WHERE id = 1"))
+
+_last_interaction = None
+_last_interaction_lock = threading.Lock()
+
+@app.after_request
+def _record_interaction(response):
+    global _last_interaction
+    if request.endpoint != 'last_interaction':
+        with _last_interaction_lock:
+            _last_interaction = datetime.utcnow()
+    return response
+
+@app.route('/internal/last-interaction')
+def last_interaction():
+    with _last_interaction_lock:
+        ts = _last_interaction
+    if ts is None:
+        return '999999'
+    return str(int((datetime.utcnow() - ts).total_seconds()))
 
 HARDCODED_USER_EMAIL = os.environ.get('APP_USER_EMAIL', 'admin@example.com')
 

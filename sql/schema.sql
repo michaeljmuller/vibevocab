@@ -103,6 +103,14 @@ CREATE TABLE study_sets (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- Single-row table updated on every write transaction; used to detect DB changes.
+CREATE TABLE db_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    last_modified  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_backup_at TIMESTAMPTZ
+);
+INSERT INTO db_state (id) VALUES (1);
+
 -- Review history
 -- quality_score:    SM-2 quality 0–5
 -- response_time_ms: time from card display to answer submission

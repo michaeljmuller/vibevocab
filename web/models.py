@@ -83,6 +83,13 @@ class CardProgress(db.Model):
     updated_at       = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class DbState(db.Model):
+    __tablename__ = 'db_state'
+    id             = db.Column(db.Integer, primary_key=True)
+    last_modified  = db.Column(db.DateTime(timezone=True), nullable=False)
+    last_backup_at = db.Column(db.DateTime(timezone=True))
+
+
 class ReviewLog(db.Model):
     __tablename__ = 'review_log'
     id               = db.Column(db.Integer, primary_key=True)
