@@ -1,0 +1,149 @@
+Multi-user support: created_by, OAuth, and deck sharing
+=========================================================
+
+Context
+-------
+The app is currently single-user (HARDCODED_USER_EMAIL). To support friends/family
+sharing vocabulary decks, we need real authentication, per-user sessions, and a
+sharing model. This plan covers four sequential phases. Apple OAuth is deferred.
+
+
+Phase 1: Add created_by to cards
+---------------------------------
+Smallest change; no auth dependency. Lays groundwork for attributing cards in
+shared decks.
+
+sql/schema.sql — add to cards table:
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+
+web/models.py — add to Card:
+  created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+web/app.py — add_card() (~line 436):
+  Look up current user and pass created_by=user.id to the Card constructor.
+
+Migration:
+  ALTER TABLE cards ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  UPDATE cards SET created_by = (SELECT id FROM users LIMIT 1);
+
+
+Phase 2: Google OAuth + session-based auth
+-------------------------------------------
+Dependencies — add to web/requirements.txt:
+  authlib
+  requests
+  (Authlib chosen over Flask-Dance for clean multi-provider support when Apple
+  is added later.)
+
+New env vars in docker-compose.yml web service:
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+web/app.py additions:
+
+  OAuth setup (after db.init_app(app)):
+    from authlib.integrations.flask_client import OAuth
+    oauth = OAuth(app)
+    google = oauth.register(
+        name='google',
+        client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+        client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid email profile'},
+    )
+
+  before_request hook — loads user into g.current_user, redirects to /login
+  if unauthenticated:
+    PUBLIC_ENDPOINTS = {'login', 'auth_google', 'auth_google_callback',
+                        'last_interaction', 'static'}
+
+    @app.before_request
+    def _load_user():
+        g.current_user = None
+        user_id = session.get('user_id')
+        if user_id:
+            g.current_user = db.session.get(User, user_id)
+        if g.current_user is None and request.endpoint not in PUBLIC_ENDPOINTS:
+            return redirect(url_for('login'))
+
+  New routes:
+    GET  /login                 — render login.html
+    GET  /auth/google           — redirect to Google OAuth
+    GET  /auth/google/callback  — exchange code, create/lookup user, set session
+    POST /logout                — clear session, redirect to /login
+
+New template: web/templates/login.html
+  Simple page with a "Sign in with Google" button linking to /auth/google.
+
+web/templates/base.html
+  Add user name + sign-out form to the header.
+
+
+Phase 3: Replace HARDCODED_USER_EMAIL with g.current_user
+-----------------------------------------------------------
+Replace all 8 occurrences of:
+  user = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+with:
+  user = g.current_user
+
+Lines: 189, 197, 318, 345, 361, 504, 520, 558.
+
+Remove HARDCODED_USER_EMAIL constant and APP_USER_EMAIL env var.
+
+
+Phase 4: Deck sharing
+----------------------
+Schema additions (sql/schema.sql):
+  ALTER TABLE decks ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE;
+
+  CREATE TABLE deck_shares (
+      deck_id     INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      can_modify  BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (deck_id, user_id)
+  );
+
+web/models.py:
+  Add DeckShare model; add is_public to Deck.
+
+Permission helper (web/app.py):
+  def _deck_access(deck, user):
+      # returns 'owner', 'modify', 'view', or None
+      if deck.user_id == user.id:          return 'owner'
+      share = DeckShare.query.filter_by(deck_id=deck.id, user_id=user.id).first()
+      if share: return 'modify' if share.can_modify else 'view'
+      if deck.is_public:                   return 'view'
+      return None
+
+Route changes:
+  - decks(): show owned decks + shared decks
+  - deck_detail(), card routes, quiz routes: check _deck_access(), abort(403) if None
+  - Edit/add card routes: require 'owner' or 'modify'
+  - New routes: share management (invite by email, list/remove shares, toggle is_public)
+
+UI:
+  - Deck detail page: sharing panel (owner only) — add user by email, toggle
+    can_modify, toggle is_public
+  - Decks list: visual indicator for shared/public decks
+
+
+Future (out of scope for now)
+------------------------------
+- Apple OAuth (Sign in with Apple) — Authlib supports it; session logic unchanged
+- Deck forking
+
+
+Verification (per phase)
+-------------------------
+Phase 1: Add a card, then:
+  SELECT id, source_expression, created_by FROM cards ORDER BY id DESC LIMIT 1;
+  created_by should be non-null.
+
+Phase 2: Visit app unauthenticated -> redirected to /login. Sign in with Google
+  -> session set, redirected to /decks.
+
+Phase 3: Remove APP_USER_EMAIL from env, confirm app works normally for signed-in user.
+
+Phase 4: Share a deck with another user by email, confirm they can see it.
+  Confirm a non-shared user cannot access it.

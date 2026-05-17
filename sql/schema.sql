@@ -45,6 +45,7 @@ CREATE TABLE cards (
     notes              TEXT,
     expression_audio   BYTEA,
     example_audio      BYTEA,
+    created_by         INTEGER     REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMP   NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMP   NOT NULL DEFAULT NOW()
 );

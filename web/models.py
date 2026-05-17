@@ -64,6 +64,7 @@ class Card(db.Model):
     notes             = db.Column(db.Text)
     expression_audio  = deferred(db.Column(db.LargeBinary))
     example_audio     = deferred(db.Column(db.LargeBinary))
+    created_by        = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at        = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     tags              = db.relationship('Tag', secondary=card_tags, lazy='select')

@@ -4,7 +4,7 @@ import base64
 import types
 import threading
 from datetime import datetime, timedelta
-from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response
+from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
 from sqlalchemy import text
 from models import db, User, Deck, Card, Tag, StudySet, CardProgress, ReviewLog, DbState
 from srs import sm2, quality_from_result, familiarity_label
@@ -43,7 +43,73 @@ def last_interaction():
         return '999999'
     return str(int((datetime.utcnow() - ts).total_seconds()))
 
-HARDCODED_USER_EMAIL = os.environ.get('APP_USER_EMAIL', 'admin@example.com')
+_SINGLE_USER_EMAIL = os.environ.get('SINGLE_USER', '')
+_single_user_id    = None   # cached after first lookup
+
+from authlib.integrations.flask_client import OAuth
+oauth  = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
+
+_PUBLIC_ENDPOINTS = {'login', 'auth_google', 'auth_google_callback', 'last_interaction', 'static'}
+
+@app.before_request
+def _load_user():
+    global _single_user_id
+    g.current_user = None
+
+    if _SINGLE_USER_EMAIL:
+        if _single_user_id is None:
+            user = User.query.filter_by(email=_SINGLE_USER_EMAIL).first()
+            if not user:
+                user = User(email=_SINGLE_USER_EMAIL, name=_SINGLE_USER_EMAIL,
+                            created_at=datetime.utcnow())
+                db.session.add(user)
+                db.session.commit()
+            _single_user_id = user.id
+        g.current_user = db.session.get(User, _single_user_id)
+        return
+
+    user_id = session.get('user_id')
+    if user_id:
+        g.current_user = db.session.get(User, user_id)
+    if g.current_user is None and request.endpoint not in _PUBLIC_ENDPOINTS:
+        return redirect(url_for('login'))
+
+@app.context_processor
+def _inject_globals():
+    return dict(single_user_mode=bool(_SINGLE_USER_EMAIL))
+
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+@app.route('/auth/google')
+def auth_google():
+    return google.authorize_redirect(url_for('auth_google_callback', _external=True))
+
+@app.route('/auth/google/callback')
+def auth_google_callback():
+    token = google.authorize_access_token()
+    info  = token['userinfo']
+    user  = User.query.filter_by(email=info['email']).first()
+    if not user:
+        user = User(email=info['email'], name=info['name'],
+                    avatar_url=info.get('picture'), created_at=datetime.utcnow())
+        db.session.add(user)
+        db.session.commit()
+    session['user_id'] = user.id
+    return redirect(url_for('decks'))
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
 
 # Definite articles by (gender, is_plural) for each language family.
 _ARTICLES = {
@@ -186,7 +252,7 @@ def index():
 
 @app.route('/decks')
 def decks():
-    user = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user = g.current_user
     user_decks = Deck.query.filter_by(user_id=user.id).all()
     return render_template('decks.html', decks=user_decks, user=user)
 
@@ -194,7 +260,7 @@ def decks():
 @app.route('/deck/<int:deck_id>')
 def deck_detail(deck_id):
     from query_parser import build_filter, QueryParseError
-    user       = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user       = g.current_user
     deck       = Deck.query.get_or_404(deck_id)
     study_sets = StudySet.query.filter_by(deck_id=deck_id).order_by(StudySet.name).all()
     card_count = Card.query.filter_by(deck_id=deck_id).count()
@@ -315,7 +381,7 @@ def delete_study_set(set_id):
 @app.route('/study-set/<int:set_id>/quiz')
 def study_set_quiz(set_id):
     from query_parser import build_filter, QueryParseError
-    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user      = g.current_user
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
     try:
@@ -342,7 +408,7 @@ def study_set_quiz(set_id):
 
 @app.route('/study-set/<int:set_id>/check', methods=['POST'])
 def study_set_check(set_id):
-    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user      = g.current_user
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
     card      = Card.query.get_or_404(int(request.form['card_id']))
@@ -358,7 +424,7 @@ def study_set_check(set_id):
 
 @app.route('/quiz/<int:deck_id>')
 def quiz(deck_id):
-    user  = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user  = g.current_user
     deck  = Deck.query.get_or_404(deck_id)
     card  = (Card.query
              .outerjoin(CardProgress, db.and_(
@@ -453,6 +519,7 @@ def add_card(deck_id):
             notes=request.form.get('notes', '').strip() or None,
             expression_audio=base64.b64decode(expression_audio_b64) if expression_audio_b64 else None,
             example_audio=base64.b64decode(example_audio_b64) if example_audio_b64 else None,
+            created_by=g.current_user.id,
         )
         db.session.add(card)
         db.session.flush()
@@ -501,7 +568,7 @@ def quiz_card(card_id):
 
 @app.route('/quiz/<int:deck_id>/check', methods=['POST'])
 def quiz_check(deck_id):
-    user      = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user      = g.current_user
     deck      = Deck.query.get_or_404(deck_id)
     card      = Card.query.get_or_404(int(request.form['card_id']))
     action    = request.form.get('action')
@@ -517,7 +584,7 @@ def quiz_check(deck_id):
 @app.route('/deck/<int:deck_id>/words')
 def deck_words(deck_id):
     from sqlalchemy.orm import joinedload
-    user  = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user  = g.current_user
     deck  = Deck.query.get_or_404(deck_id)
     cards = (Card.query
              .filter_by(deck_id=deck_id)
@@ -555,7 +622,7 @@ def deck_tags(deck_id):
 
 @app.route('/card/<int:card_id>/review/override', methods=['POST'])
 def override_review(card_id):
-    user = User.query.filter_by(email=HARDCODED_USER_EMAIL).first_or_404()
+    user = g.current_user
     Card.query.get_or_404(card_id)
     log = (ReviewLog.query
            .filter_by(user_id=user.id, card_id=card_id)

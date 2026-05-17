@@ -25,8 +25,10 @@ services:
       DB_NAME: ${POSTGRES_DB:-vibevocab}
       DB_USER: ${POSTGRES_USER:-vibevocab}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
-      APP_USER_EMAIL: ${APP_USER_EMAIL:-admin@example.com}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key}
+      SINGLE_USER: ${SINGLE_USER:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}

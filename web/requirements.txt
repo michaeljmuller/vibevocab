@@ -5,3 +5,5 @@ instructor
 openai
 anthropic
 elevenlabs
+authlib
+requests
