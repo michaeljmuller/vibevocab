@@ -72,23 +72,6 @@ services:
     command: bash -c "apt-get update -qq && apt-get install -y -qq curl && bash /watcher.sh"
     restart: unless-stopped
 
-  ingest:
-    build: ./ingest
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB:-vibevocab}
-      DB_USER: ${POSTGRES_USER:-vibevocab}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      CSV_PATH: /data/pt-PT-lexicon.csv
-    volumes:
-      - ./pt-PT-lexicon.csv:/data/pt-PT-lexicon.csv:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    profiles:
-      - ingest
 
 volumes:
   pgdata:
