@@ -84,8 +84,8 @@ document.querySelectorAll('td[data-utc]').forEach(td => {
     const countEl = document.getElementById('words-count');
     const showExamples = document.getElementById('words-show-examples');
     const colKeys = ['source', 'target', 'pos', 'tags', 'date'];
-    let sortCol = 'source';
-    let sortAsc = true;
+    let sortCol = 'date';
+    let sortAsc = false;
 
     function groups() { return Array.from(table.querySelectorAll('tbody.card-group')); }
 
