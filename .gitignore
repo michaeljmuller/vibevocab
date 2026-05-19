@@ -1,6 +1,6 @@
-ingest/
 .playwright-mcp/
 backups/
+db/
 
 # Python
 __pycache__/

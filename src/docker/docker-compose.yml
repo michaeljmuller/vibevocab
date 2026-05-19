@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vibevocab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
     volumes:
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - pgdata:/var/lib/postgresql/data
+      - ./src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./db:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -18,7 +18,7 @@ services:
       retries: 10
 
   web:
-    build: ./web
+    build: ./src/web
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -47,7 +47,7 @@ services:
       TTS_SPEAKER_BOOST: ${TTS_SPEAKER_BOOST:-true}
       CARD_FLIP_INTER_AUDIO_PAUSE_MS: ${CARD_FLIP_INTER_AUDIO_PAUSE_MS:-1500}
     volumes:
-      - ./web:/app
+      - ./src/web:/app
       - ./prompts:/prompts:ro
     ports:
       - "5001:5000"
@@ -65,13 +65,9 @@ services:
       BACKUP_POLL_SECONDS: ${BACKUP_POLL_SECONDS:-60}
     volumes:
       - ./backups:/backups
-      - ./backup/watcher.sh:/watcher.sh:ro
+      - ./src/scripts/watcher.sh:/watcher.sh:ro
     depends_on:
       db:
         condition: service_healthy
     command: bash -c "apt-get update -qq && apt-get install -y -qq curl && bash /watcher.sh"
     restart: unless-stopped
-
-
-volumes:
-  pgdata:

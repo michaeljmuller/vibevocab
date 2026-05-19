@@ -6,6 +6,10 @@ A vocabulary-building flashcard web app.
 
 All services run in Docker containers orchestrated with Docker Compose.
 
+Compose file is at src/docker/docker-compose.yml. Run from the project root:
+
+  docker compose -f src/docker/docker-compose.yml --project-directory . <command>
+
 - Production: Linux / x86-64 (intel)
 - Development: macOS / arm64 (Apple Silicon)
 
