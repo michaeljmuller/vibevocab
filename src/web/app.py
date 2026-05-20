@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
 from sqlalchemy import text
-from models import db, User, Deck, DeckShare, Card, Tag, StudySet, CardProgress, ReviewLog, DbState
+from models import db, User, Deck, DeckShare, Card, Tag, StudySet, CardProgress, ReviewLog, DbState, ElevenLabsVoice
 from srs import sm2, quality_from_result, familiarity_label
 
 app = Flask(__name__)
@@ -26,6 +26,73 @@ def _mark_db_modified(session):
 
 _last_interaction = None
 _last_interaction_lock = threading.Lock()
+
+# True once the background voice-cache crawl finishes (success or failure).
+_voice_cache_ready = False
+
+def _refresh_voice_cache():
+    import requests as _req
+    global _voice_cache_ready
+    api_key = os.environ.get('ELEVENLABS_API_KEY', '')
+    if not api_key:
+        _voice_cache_ready = True
+        return
+    with app.app_context():
+        latest = db.session.execute(
+            text('SELECT MAX(cached_at) FROM elevenlabs_voices')
+        ).scalar()
+        if latest and (datetime.utcnow() - latest).days < 7:
+            app.logger.info('Voice cache is fresh (last updated %s)', latest)
+            _voice_cache_ready = True
+            return
+    voices = []
+    page = 0
+    try:
+        while True:
+            r = _req.get(
+                'https://api.elevenlabs.io/v1/shared-voices',
+                params={'page_size': 100, 'page': page},
+                headers={'xi-api-key': api_key},
+                timeout=30,
+            )
+            data = r.json()
+            batch = data.get('voices', [])
+            for v in batch:
+                locale = v.get('locale') or ''
+                voices.append({
+                    'voice_id':    v['voice_id'],
+                    'name':        v['name'],
+                    'language':    locale.split('-')[0] if locale else v.get('language'),
+                    'locale':      locale or None,
+                    'gender':      v.get('gender'),
+                    'age':         v.get('age'),
+                    'accent':      v.get('accent'),
+                    'use_case':    v.get('use_case'),
+                    'descriptive': v.get('descriptive'),
+                    'preview_url': v.get('preview_url'),
+                })
+            if not data.get('has_more') or not batch:
+                break
+            page += 1
+    except Exception as e:
+        app.logger.error('Voice cache crawl failed: %s', e)
+        _voice_cache_ready = True
+        return
+    now = datetime.utcnow()
+    with app.app_context():
+        with db.engine.begin() as conn:
+            conn.execute(text('TRUNCATE TABLE elevenlabs_voices'))
+            if voices:
+                conn.execute(
+                    text('INSERT INTO elevenlabs_voices '
+                         '(voice_id,name,language,locale,gender,age,accent,use_case,descriptive,preview_url,cached_at) '
+                         'VALUES (:voice_id,:name,:language,:locale,:gender,:age,:accent,:use_case,:descriptive,:preview_url,:cached_at)'),
+                    [{**v, 'cached_at': now} for v in voices],
+                )
+    app.logger.info('Voice cache saved: %d voices', len(voices))
+    _voice_cache_ready = True
+
+threading.Thread(target=_refresh_voice_cache, daemon=True).start()
 
 @app.after_request
 def _record_interaction(response):
@@ -56,7 +123,10 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'},
 )
 
-_PUBLIC_ENDPOINTS = {'login', 'auth_google', 'auth_google_callback', 'last_interaction', 'static'}
+_PUBLIC_ENDPOINTS = {
+    'login', 'auth_google', 'auth_google_callback', 'last_interaction', 'static',
+    'tts_display_names', 'tts_languages', 'tts_locales', 'tts_genders', 'tts_accents', 'tts_use_cases', 'tts_voices',
+}
 
 @app.before_request
 def _load_user():
@@ -266,6 +336,95 @@ def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url, 
 @app.route('/')
 def index():
     return redirect(url_for('decks'))
+
+
+@app.route('/decks/new', methods=['GET', 'POST'])
+def new_deck():
+    if request.method == 'POST':
+        name          = request.form.get('name', '').strip()
+        src           = request.form.get('source_language', '').strip()
+        target        = request.form.get('target_language', '').strip()
+        voice_id      = request.form.get('tts_voice_id', '').strip() or None
+        speed         = float(request.form.get('tts_speed', '1.0') or '1.0')
+        stability     = float(request.form.get('tts_stability', '0.48') or '0.48')
+        similarity    = float(request.form.get('tts_similarity', '0.75') or '0.75')
+        style         = float(request.form.get('tts_style', '0.08') or '0.08')
+        speaker_boost = request.form.get('tts_speaker_boost') == 'true'
+        error = None
+        if not name:
+            error = 'Name is required.'
+        elif not src:
+            error = 'Source language is required.'
+        elif not target:
+            error = 'Target language is required.'
+        if error:
+            return render_template('new_deck.html', error=error, name=name,
+                                   source_language=src, target_language=target,
+                                   tts_voice_id=voice_id or '', tts_speed=speed,
+                                   tts_stability=stability, tts_similarity=similarity,
+                                   tts_style=style, tts_speaker_boost=speaker_boost)
+        now  = datetime.utcnow()
+        deck = Deck(user_id=g.current_user.id, name=name,
+                    source_language=src, target_language=target,
+                    sharing_mode='private',
+                    tts_voice_id=voice_id, tts_speed=speed,
+                    tts_stability=stability, tts_similarity=similarity,
+                    tts_style=style, tts_speaker_boost=speaker_boost,
+                    created_at=now, updated_at=now)
+        db.session.add(deck)
+        db.session.commit()
+        return redirect(url_for('deck_detail', deck_id=deck.id))
+    return render_template('new_deck.html', error=None, name='', source_language='', target_language='',
+                           tts_voice_id='', tts_speed=1.0, tts_stability=0.48,
+                           tts_similarity=0.75, tts_style=0.08, tts_speaker_boost=True)
+
+
+@app.route('/deck/<int:deck_id>/edit', methods=['GET', 'POST'])
+def edit_deck(deck_id):
+    deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'owner')
+    if request.method == 'POST':
+        name          = request.form.get('name', '').strip()
+        src           = request.form.get('source_language', '').strip()
+        target        = request.form.get('target_language', '').strip()
+        voice_id      = request.form.get('tts_voice_id', '').strip() or None
+        speed         = float(request.form.get('tts_speed', '1.0') or '1.0')
+        stability     = float(request.form.get('tts_stability', '0.48') or '0.48')
+        similarity    = float(request.form.get('tts_similarity', '0.75') or '0.75')
+        style         = float(request.form.get('tts_style', '0.08') or '0.08')
+        speaker_boost = request.form.get('tts_speaker_boost') == 'true'
+        error = None
+        if not name:
+            error = 'Name is required.'
+        elif not src:
+            error = 'Source language is required.'
+        elif not target:
+            error = 'Target language is required.'
+        if error:
+            return render_template('edit_deck.html', deck=deck, error=error, name=name,
+                                   source_language=src, target_language=target,
+                                   tts_voice_id=voice_id or '', tts_speed=speed,
+                                   tts_stability=stability, tts_similarity=similarity,
+                                   tts_style=style, tts_speaker_boost=speaker_boost)
+        deck.name          = name
+        deck.source_language = src
+        deck.target_language = target
+        deck.tts_voice_id  = voice_id
+        deck.tts_speed     = speed
+        deck.tts_stability = stability
+        deck.tts_similarity = similarity
+        deck.tts_style     = style
+        deck.tts_speaker_boost = speaker_boost
+        deck.updated_at    = datetime.utcnow()
+        db.session.commit()
+        return redirect(url_for('deck_detail', deck_id=deck.id))
+    return render_template('edit_deck.html', deck=deck, error=None, name=deck.name,
+                           source_language=deck.source_language,
+                           target_language=deck.target_language,
+                           tts_voice_id=deck.tts_voice_id or '',
+                           tts_speed=deck.tts_speed, tts_stability=deck.tts_stability,
+                           tts_similarity=deck.tts_similarity, tts_style=deck.tts_style,
+                           tts_speaker_boost=deck.tts_speaker_boost)
 
 
 @app.route('/decks')
@@ -852,7 +1011,9 @@ def generate_audio(card_id, field):
             noun_is_plural = data.get('noun_is_plural', card.noun_is_plural)
             text = _with_article(text, part_of_speech, noun_gender, noun_is_plural, deck.target_language)
 
-        audio = tts_generate(text)
+        audio = tts_generate(text, voice_id=deck.tts_voice_id, speed=deck.tts_speed,
+                             stability=deck.tts_stability, similarity=deck.tts_similarity,
+                             style=deck.tts_style, speaker_boost=deck.tts_speaker_boost)
         return jsonify(audio_b64=base64.b64encode(audio).decode())
     except Exception as e:
         return jsonify(error=str(e)), 500
@@ -921,7 +1082,9 @@ def deck_generate_audio(deck_id):
                 deck.target_language,
             )
 
-        audio = tts_generate(text)
+        audio = tts_generate(text, voice_id=deck.tts_voice_id, speed=deck.tts_speed,
+                             stability=deck.tts_stability, similarity=deck.tts_similarity,
+                             style=deck.tts_style, speaker_boost=deck.tts_speaker_boost)
         return jsonify(audio_b64=base64.b64encode(audio).decode())
     except Exception as e:
         return jsonify(error=str(e)), 500
@@ -980,6 +1143,152 @@ def deck_share_remove(deck_id, user_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify(ok=True)
     return redirect(url_for('deck_detail', deck_id=deck_id))
+
+
+@app.route('/api/tts/display-names')
+def tts_display_names():
+    import pycountry
+    from babel import Locale, UnknownLocaleError
+    from collections import Counter
+
+    lang_rows = db.session.execute(
+        text("SELECT DISTINCT language FROM elevenlabs_voices "
+             "WHERE language IS NOT NULL AND language <> '' ORDER BY language")
+    ).fetchall()
+    locale_rows = db.session.execute(
+        text("SELECT DISTINCT locale FROM elevenlabs_voices "
+             "WHERE locale IS NOT NULL AND locale <> '' ORDER BY locale")
+    ).fetchall()
+
+    # Language names: pycountry covers all ISO 639 codes including alpha_3 ones.
+    # A few ISO names are overly verbose; override those.
+    _LANG_OVERRIDES = {'el': 'Greek', 'ms': 'Malay'}
+    languages = {}
+    for (code,) in lang_rows:
+        if code in _LANG_OVERRIDES:
+            languages[code] = _LANG_OVERRIDES[code]
+        else:
+            lang = pycountry.languages.get(alpha_2=code) or pycountry.languages.get(alpha_3=code)
+            languages[code] = lang.name if lang else code
+
+    # Territory names from locale codes: babel has friendlier names than pycountry
+    # ("South Korea" vs "Korea, Republic of"), with pycountry as fallback.
+    _en = Locale.parse('en')
+    territory_names = {}  # locale code -> territory display name
+    for (code,) in locale_rows:
+        territory_code = code.split('-')[1] if '-' in code else ''
+        name = _en.territories.get(territory_code)
+        if not name and territory_code:
+            country = pycountry.countries.get(alpha_2=territory_code)
+            name = country.name if country else None
+        territory_names[code] = name or code
+
+    # Only disambiguate within the same language prefix — two locales that share a
+    # territory name only collide if they'd appear in the same region dropdown
+    # (i.e. same language prefix: en-US vs en-CA, not en-US vs es-US).
+    lang_territory_counts = Counter(
+        (code.split('-')[0], name)
+        for code, name in territory_names.items()
+    )
+    locales = {
+        code: f'{name} ({code})' if lang_territory_counts[(code.split('-')[0], name)] > 1 else name
+        for code, name in territory_names.items()
+    }
+    return jsonify(languages=languages, locales=locales)
+
+
+@app.route('/api/tts/languages')
+def tts_languages():
+    if not _voice_cache_ready:
+        return jsonify(languages=[], loading=True)
+    rows = db.session.execute(
+        text("SELECT DISTINCT language FROM elevenlabs_voices "
+             "WHERE language IS NOT NULL AND language <> '' ORDER BY language")
+    ).fetchall()
+    return jsonify(languages=[r[0] for r in rows])
+
+
+@app.route('/api/tts/locales')
+def tts_locales():
+    lang = request.args.get('language', '').strip()
+    if not lang:
+        return jsonify(locales=[])
+    rows = db.session.execute(
+        text("SELECT DISTINCT locale FROM elevenlabs_voices "
+             "WHERE language=:lang AND locale IS NOT NULL AND locale <> '' ORDER BY locale"),
+        {'lang': lang}
+    ).fetchall()
+    return jsonify(locales=[r[0] for r in rows])
+
+
+@app.route('/api/tts/genders')
+def tts_genders():
+    lang   = request.args.get('language', '').strip()
+    locale = request.args.get('locale', '').strip()
+    if not lang or not locale:
+        return jsonify(genders=[])
+    rows = db.session.execute(
+        text("SELECT DISTINCT gender FROM elevenlabs_voices "
+             "WHERE language=:lang AND locale=:locale AND gender IS NOT NULL AND gender <> '' ORDER BY gender"),
+        {'lang': lang, 'locale': locale}
+    ).fetchall()
+    return jsonify(genders=[r[0] for r in rows])
+
+
+@app.route('/api/tts/accents')
+def tts_accents():
+    lang   = request.args.get('language', '').strip()
+    locale = request.args.get('locale', '').strip()
+    if not lang or not locale:
+        return jsonify(accents=[])
+    rows = db.session.execute(
+        text("SELECT DISTINCT accent FROM elevenlabs_voices "
+             "WHERE language=:lang AND locale=:locale AND accent IS NOT NULL AND accent <> '' ORDER BY accent"),
+        {'lang': lang, 'locale': locale}
+    ).fetchall()
+    return jsonify(accents=[r[0] for r in rows])
+
+
+@app.route('/api/tts/use-cases')
+def tts_use_cases():
+    lang   = request.args.get('language', '').strip()
+    locale = request.args.get('locale', '').strip()
+    if not lang or not locale:
+        return jsonify(use_cases=[])
+    rows = db.session.execute(
+        text("SELECT DISTINCT use_case FROM elevenlabs_voices "
+             "WHERE language=:lang AND locale=:locale AND use_case IS NOT NULL AND use_case <> '' ORDER BY use_case"),
+        {'lang': lang, 'locale': locale}
+    ).fetchall()
+    return jsonify(use_cases=[r[0] for r in rows])
+
+
+@app.route('/api/tts/voices')
+def tts_voices():
+    lang     = request.args.get('language', '').strip()
+    locale   = request.args.get('locale', '').strip()
+    gender   = request.args.get('gender', '').strip()
+    accent   = request.args.get('accent', '').strip()
+    use_case = request.args.get('use_case', '').strip()
+    if not lang or not locale:
+        return jsonify(voices=[])
+    clauses = ['language=:lang', 'locale=:locale']
+    params  = {'lang': lang, 'locale': locale}
+    if gender:   clauses.append('gender=:gender');     params['gender']   = gender
+    if accent:   clauses.append('accent=:accent');     params['accent']   = accent
+    if use_case: clauses.append('use_case=:use_case'); params['use_case'] = use_case
+    rows = db.session.execute(
+        text('SELECT voice_id, name, accent, descriptive, preview_url '
+             'FROM elevenlabs_voices WHERE ' + ' AND '.join(clauses) + ' ORDER BY name'),
+        params
+    ).fetchall()
+    return jsonify(voices=[{
+        'voice_id':    r[0],
+        'name':        r[1],
+        'accent':      r[2],
+        'descriptive': r[3],
+        'preview_url': r[4],
+    } for r in rows])
 
 
 @app.route('/deck/<int:deck_id>/set-sharing-mode', methods=['POST'])

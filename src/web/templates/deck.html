@@ -70,6 +70,7 @@
     {% endif %}
     <a href="{{ url_for('deck_words', deck_id=deck.id) }}" class="btn btn-secondary">Browse words</a>
     {% if deck_access == 'owner' %}
+    <a href="{{ url_for('edit_deck', deck_id=deck.id) }}" class="btn btn-secondary">Edit deck…</a>
     <button type="button" class="btn btn-secondary" onclick="openSharingModal()">Sharing…</button>
     {% endif %}
 </div>

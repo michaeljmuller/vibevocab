@@ -73,6 +73,17 @@ h1 {
 
 /* ── Deck list ── */
 
+.deck-list-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.deck-list-header h1 {
+    margin: 0;
+}
+
 .deck-list {
     display: flex;
     flex-direction: column;
@@ -208,6 +219,12 @@ h1 {
     background: #d1d5db;
 }
 
+.btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
 .quiz-result {
     margin: 1.5rem 0 0;
     padding: 0.75rem 1rem;
@@ -325,12 +342,38 @@ h1 {
     gap: 0.75rem;
 }
 
-.field-group h2 {
+.field-group h2,
+.field-group-heading {
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: #999;
     margin-bottom: 0.25rem;
+}
+
+.field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.field-with-button {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.field-with-button select {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+#vp-preview {
+    min-width: 7rem;
+}
+
+.field-row .field {
+    flex: 1 1 120px;
 }
 
 .field {
@@ -346,10 +389,14 @@ h1 {
 }
 
 .field input[type="text"],
+.field input[type="number"],
 .field select,
 .field textarea {
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.4rem 0.75rem;
     font-size: 1rem;
+    line-height: 1.5;
     border: 2px solid #ddd;
     border-radius: 6px;
     outline: none;
@@ -357,7 +404,16 @@ h1 {
     transition: border-color 0.15s;
 }
 
+.field select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    padding-right: 2rem;
+}
+
 .field input[type="text"]:focus,
+.field input[type="number"]:focus,
 .field select:focus,
 .field textarea:focus {
     border-color: #2c5f8a;

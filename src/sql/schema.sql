@@ -21,6 +21,12 @@ CREATE TABLE decks (
     source_language  TEXT        NOT NULL,
     target_language  TEXT        NOT NULL,
     sharing_mode     TEXT        NOT NULL DEFAULT 'private',
+    tts_voice_id     TEXT,
+    tts_speed        REAL        NOT NULL DEFAULT 1.0,
+    tts_stability    REAL        NOT NULL DEFAULT 0.48,
+    tts_similarity   REAL        NOT NULL DEFAULT 0.75,
+    tts_style        REAL        NOT NULL DEFAULT 0.08,
+    tts_speaker_boost BOOLEAN    NOT NULL DEFAULT TRUE,
     created_at       TIMESTAMP   NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMP   NOT NULL DEFAULT NOW()
 );
@@ -123,6 +129,22 @@ CREATE TABLE db_state (
     last_backup_at TIMESTAMPTZ
 );
 INSERT INTO db_state (id) VALUES (1);
+
+-- ElevenLabs voice library cache (refreshed weekly by a background thread at startup)
+CREATE TABLE elevenlabs_voices (
+    voice_id    TEXT      PRIMARY KEY,
+    name        TEXT      NOT NULL,
+    language    TEXT,
+    locale      TEXT,
+    gender      TEXT,
+    age         TEXT,
+    accent      TEXT,
+    use_case    TEXT,
+    descriptive TEXT,
+    preview_url TEXT,
+    cached_at   TIMESTAMP NOT NULL
+);
+CREATE INDEX ix_elevenlabs_voices ON elevenlabs_voices (language, locale);
 
 -- Review history
 -- quality_score:    SM-2 quality 0–5

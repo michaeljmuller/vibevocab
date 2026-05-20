@@ -1,0 +1,323 @@
+{% extends 'base.html' %}
+
+{% block title %}New Deck — VibeVocab{% endblock %}
+
+{% block content %}
+<div class="deck-header">
+    <h1>New Deck</h1>
+</div>
+
+<form method="POST" class="edit-form">
+    <div class="field-group">
+        <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{ name }}" required autofocus>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label for="vp-src-language">Source language</label>
+                <select id="vp-src-language"><option value="">— loading —</option></select>
+            </div>
+            <div class="field">
+                <label for="vp-src-locale">Source region</label>
+                <select id="vp-src-locale" disabled><option value="">— pick a language first —</option></select>
+            </div>
+            <div class="field">
+                <label for="vp-language">Target language</label>
+                <select id="vp-language"><option value="">— loading —</option></select>
+            </div>
+            <div class="field">
+                <label for="vp-locale">Target region</label>
+                <select id="vp-locale" disabled><option value="">— pick a language first —</option></select>
+            </div>
+        </div>
+        <input type="hidden" id="source_language" name="source_language" value="{{ source_language }}">
+        <input type="hidden" id="target_language" name="target_language" value="{{ target_language }}">
+        {% if error %}<p class="suggestion-error">{{ error }}</p>{% endif %}
+    </div>
+
+    <div class="field-group">
+        <h2 class="field-group-heading">Voice (ElevenLabs)</h2>
+
+        <div class="voice-picker">
+            <div class="field-row">
+                <div class="field">
+                    <label for="vp-gender">Gender</label>
+                    <select id="vp-gender" disabled><option value="">All genders</option></select>
+                </div>
+                <div class="field">
+                    <label for="vp-accent">Accent</label>
+                    <select id="vp-accent" disabled><option value="">All accents</option></select>
+                </div>
+                <div class="field">
+                    <label for="vp-use-case">Use case</label>
+                    <select id="vp-use-case" disabled><option value="">All use cases</option></select>
+                </div>
+            </div>
+            <div class="field">
+                <label for="vp-name">Voice</label>
+                <div class="field-with-button">
+                    <select id="vp-name" disabled><option value="">— pick a language and region first —</option></select>
+                    <button type="button" id="vp-preview" class="btn btn-secondary" disabled>&#9654; Preview</button>
+                </div>
+            </div>
+        </div>
+
+        <input type="hidden" id="tts_voice_id" name="tts_voice_id" value="{{ tts_voice_id }}">
+
+        <div class="field-row">
+            <div class="field">
+                <label for="tts_speed">Speed</label>
+                <input type="number" id="tts_speed" name="tts_speed"
+                       value="{{ tts_speed }}" min="0.1" max="4.0" step="0.05">
+            </div>
+            <div class="field">
+                <label for="tts_stability">Stability</label>
+                <input type="number" id="tts_stability" name="tts_stability"
+                       value="{{ tts_stability }}" min="0" max="1" step="0.01">
+            </div>
+            <div class="field">
+                <label for="tts_similarity">Similarity boost</label>
+                <input type="number" id="tts_similarity" name="tts_similarity"
+                       value="{{ tts_similarity }}" min="0" max="1" step="0.01">
+            </div>
+            <div class="field">
+                <label for="tts_style">Style</label>
+                <input type="number" id="tts_style" name="tts_style"
+                       value="{{ tts_style }}" min="0" max="1" step="0.01">
+            </div>
+            <div class="field">
+                <label for="tts_speaker_boost">Speaker boost</label>
+                <select id="tts_speaker_boost" name="tts_speaker_boost">
+                    <option value="true"{% if tts_speaker_boost %} selected{% endif %}>On</option>
+                    <option value="false"{% if not tts_speaker_boost %} selected{% endif %}>Off</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <div class="action-primary">
+            <button type="submit" id="submit-btn" class="btn btn-primary" disabled>Create deck</button>
+        </div>
+        <a href="{{ url_for('decks') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+
+<script>
+(function () {
+    var LANG_NAMES   = {};   // populated from /api/tts/display-names
+    var LOCALE_NAMES = {};
+    function langName(c)   { return LANG_NAMES[c]   || c; }
+    function localeName(c) { return LOCALE_NAMES[c] || c; }
+
+    var srcLangSel = document.getElementById('vp-src-language');
+    var srcLocSel  = document.getElementById('vp-src-locale');
+    var langSel    = document.getElementById('vp-language');
+    var localeSel  = document.getElementById('vp-locale');
+    var genderSel  = document.getElementById('vp-gender');
+    var accentSel  = document.getElementById('vp-accent');
+    var useCaseSel = document.getElementById('vp-use-case');
+    var nameSel      = document.getElementById('vp-name');
+    var voiceIdEl    = document.getElementById('tts_voice_id');
+    var srcLangEl    = document.getElementById('source_language');
+    var targetLangEl = document.getElementById('target_language');
+    var previewBtn   = document.getElementById('vp-preview');
+    var previewAudio = null;
+
+    function reset(sel, placeholder) {
+        sel.innerHTML = '<option value="">' + placeholder + '</option>';
+        sel.disabled = true;
+    }
+
+    function populate(sel, values, placeholder, labelFn) {
+        sel.innerHTML = '<option value="">' + placeholder + '</option>';
+        values.forEach(function(v) {
+            var o = document.createElement('option');
+            o.value = v; o.textContent = labelFn ? labelFn(v) : v;
+            sel.appendChild(o);
+        });
+        sel.disabled = false;
+    }
+
+    function fetchInto(url, key, sel, placeholder, labelFn, then) {
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var vals = d[key] || [];
+                if (vals.length) populate(sel, vals, placeholder, labelFn);
+                if (then) then();
+            });
+    }
+
+    function voiceParams() {
+        var p = '?language=' + encodeURIComponent(langSel.value)
+              + '&locale='   + encodeURIComponent(localeSel.value);
+        if (genderSel.value)  p += '&gender='   + encodeURIComponent(genderSel.value);
+        if (accentSel.value)  p += '&accent='   + encodeURIComponent(accentSel.value);
+        if (useCaseSel.value) p += '&use_case=' + encodeURIComponent(useCaseSel.value);
+        return p;
+    }
+
+    function loadVoices() {
+        if (!langSel.value || !localeSel.value) return;
+        nameSel.innerHTML = '<option value="">— loading —</option>';
+        nameSel.disabled = true;
+        fetch('/api/tts/voices' + voiceParams())
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var prev = voiceIdEl.value;
+                nameSel.innerHTML = '<option value="">— pick a voice —</option>';
+                (d.voices || []).forEach(function(v) {
+                    var o = document.createElement('option');
+                    o.value = v.voice_id;
+                    o.dataset.preview = v.preview_url || '';
+                    var label = v.name;
+                    var meta = [v.accent, v.descriptive].filter(Boolean).join(' · ');
+                    if (meta) label += ' — ' + meta;
+                    o.textContent = label;
+                    if (v.voice_id === prev) o.selected = true;
+                    nameSel.appendChild(o);
+                });
+                nameSel.disabled = false;
+                if (nameSel.value) voiceIdEl.value = nameSel.value;
+                updatePreviewBtn();
+            });
+    }
+
+    function loadSecondaryFilters() {
+        var qs = '?language=' + encodeURIComponent(langSel.value)
+               + '&locale='  + encodeURIComponent(localeSel.value);
+        fetchInto('/api/tts/genders'   + qs, 'genders',   genderSel,  'All genders',   null, loadVoices);
+        fetchInto('/api/tts/accents'   + qs, 'accents',   accentSel,  'All accents',   null, null);
+        fetchInto('/api/tts/use-cases' + qs, 'use_cases', useCaseSel, 'All use cases', null, null);
+    }
+
+    // Shared factory: wires up a language+locale picker pair to a hidden input.
+    // onLocaleChange is called after the locale is set (optional, for the target picker).
+    function makeLangPicker(lSel, locSel, hiddenEl, onLocaleChange) {
+        lSel.addEventListener('change', function() {
+            hiddenEl.value = '';
+            reset(locSel, '— pick a language first —');
+            updateSubmit();
+            if (!lSel.value) return;
+            fetch('/api/tts/locales?language=' + encodeURIComponent(lSel.value))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var vals = d.locales || [];
+                    populate(locSel, vals, '— pick a region —', localeName);
+                    if (vals.length === 1) {
+                        locSel.value = vals[0];
+                        locSel.dispatchEvent(new Event('change'));
+                    }
+                });
+        });
+        locSel.addEventListener('change', function() {
+            hiddenEl.value = locSel.value;
+            updateSubmit();
+            if (onLocaleChange) onLocaleChange();
+        });
+    }
+
+    makeLangPicker(srcLangSel, srcLocSel, srcLangEl, null);
+
+    makeLangPicker(langSel, localeSel, targetLangEl, function() {
+        voiceIdEl.value = '';
+        reset(genderSel,  'All genders');
+        reset(accentSel,  'All accents');
+        reset(useCaseSel, 'All use cases');
+        reset(nameSel,    '— loading —');
+        if (localeSel.value) loadSecondaryFilters();
+    });
+
+    genderSel.addEventListener('change',  loadVoices);
+    accentSel.addEventListener('change',  loadVoices);
+    useCaseSel.addEventListener('change', loadVoices);
+    function stopPreview() {
+        if (previewAudio) { previewAudio.pause(); previewAudio = null; }
+        previewBtn.textContent = '▶ Preview';
+    }
+
+    function playPreview(url) {
+        stopPreview();
+        if (!url) return;
+        previewAudio = new Audio(url);
+        previewAudio.addEventListener('ended', stopPreview);
+        previewAudio.play();
+        previewBtn.textContent = '■ Stop';
+    }
+
+    function currentPreviewUrl() {
+        var opt = nameSel.options[nameSel.selectedIndex];
+        return opt && opt.dataset.preview || '';
+    }
+
+    function updatePreviewBtn() {
+        previewBtn.disabled = !currentPreviewUrl();
+    }
+
+    previewBtn.addEventListener('click', function() {
+        if (previewAudio) { stopPreview(); return; }
+        playPreview(currentPreviewUrl());
+    });
+
+    nameSel.addEventListener('change', function() {
+        if (nameSel.value) voiceIdEl.value = nameSel.value;
+        var url = currentPreviewUrl();
+        previewBtn.disabled = !url;
+        playPreview(url);
+    });
+
+    function loadLanguages() {
+        fetch('/api/tts/languages')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.loading) {
+                    var msg = '<option value="">— building voice library —</option>';
+                    srcLangSel.innerHTML = msg;
+                    srcLangSel.disabled = true;
+                    langSel.innerHTML = msg;
+                    langSel.disabled = true;
+                    setTimeout(loadLanguages, 5000);
+                    return;
+                }
+                var langs = (d.languages || []).slice();
+                langs.sort(function(a, b) { return langName(a).localeCompare(langName(b)); });
+                [srcLangSel, langSel].forEach(function(sel) {
+                    sel.innerHTML = '<option value="">— pick a language —</option>';
+                    langs.forEach(function(c) {
+                        var o = document.createElement('option');
+                        o.value = c; o.textContent = langName(c);
+                        sel.appendChild(o);
+                    });
+                    sel.disabled = false;
+                });
+            })
+            .catch(function() {
+                var msg = '<option value="">— failed to load —</option>';
+                srcLangSel.innerHTML = msg;
+                langSel.innerHTML = msg;
+            });
+    }
+
+    // Enable submit only when all required fields have values
+    var submitBtn = document.getElementById('submit-btn');
+    var form = submitBtn.closest('form');
+    function updateSubmit() {
+        submitBtn.disabled = !form.checkValidity() || !srcLangEl.value || !targetLangEl.value || !voiceIdEl.value;
+    }
+    form.addEventListener('input', updateSubmit);
+    form.addEventListener('change', updateSubmit);
+
+    // Fetch display names first, then load languages (names are needed for sort order)
+    fetch('/api/tts/display-names')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            LANG_NAMES   = d.languages || {};
+            LOCALE_NAMES = d.locales   || {};
+            loadLanguages();
+        })
+        .catch(function() { loadLanguages(); });
+})();
+</script>
+{% endblock %}

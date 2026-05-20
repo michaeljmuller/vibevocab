@@ -6,4 +6,6 @@ openai
 anthropic
 elevenlabs
 authlib
+babel
+pycountry
 requests

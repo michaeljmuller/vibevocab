@@ -23,14 +23,20 @@ class User(db.Model):
 
 class Deck(db.Model):
     __tablename__ = 'decks'
-    id              = db.Column(db.Integer, primary_key=True)
-    user_id         = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    name            = db.Column(db.Text, nullable=False)
-    source_language = db.Column(db.Text, nullable=False)
-    target_language = db.Column(db.Text, nullable=False)
-    sharing_mode    = db.Column(db.Text, nullable=False, default='private')
-    created_at      = db.Column(db.DateTime, nullable=False)
-    updated_at      = db.Column(db.DateTime, nullable=False)
+    id                = db.Column(db.Integer, primary_key=True)
+    user_id           = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name              = db.Column(db.Text, nullable=False)
+    source_language   = db.Column(db.Text, nullable=False)
+    target_language   = db.Column(db.Text, nullable=False)
+    sharing_mode      = db.Column(db.Text, nullable=False, default='private')
+    tts_voice_id      = db.Column(db.Text)
+    tts_speed         = db.Column(db.Float, nullable=False, default=1.0)
+    tts_stability     = db.Column(db.Float, nullable=False, default=0.48)
+    tts_similarity    = db.Column(db.Float, nullable=False, default=0.75)
+    tts_style         = db.Column(db.Float, nullable=False, default=0.08)
+    tts_speaker_boost = db.Column(db.Boolean, nullable=False, default=True)
+    created_at        = db.Column(db.DateTime, nullable=False)
+    updated_at        = db.Column(db.DateTime, nullable=False)
 
 
 class DeckShare(db.Model):
@@ -99,6 +105,21 @@ class DbState(db.Model):
     id             = db.Column(db.Integer, primary_key=True)
     last_modified  = db.Column(db.DateTime(timezone=True), nullable=False)
     last_backup_at = db.Column(db.DateTime(timezone=True))
+
+
+class ElevenLabsVoice(db.Model):
+    __tablename__ = 'elevenlabs_voices'
+    voice_id    = db.Column(db.Text, primary_key=True)
+    name        = db.Column(db.Text, nullable=False)
+    language    = db.Column(db.Text)
+    locale      = db.Column(db.Text)
+    gender      = db.Column(db.Text)
+    age         = db.Column(db.Text)
+    accent      = db.Column(db.Text)
+    use_case    = db.Column(db.Text)
+    descriptive = db.Column(db.Text)
+    preview_url = db.Column(db.Text)
+    cached_at   = db.Column(db.DateTime, nullable=False)
 
 
 class ReviewLog(db.Model):

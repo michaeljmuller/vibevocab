@@ -3,7 +3,10 @@
 {% block title %}My Decks — VibeVocab{% endblock %}
 
 {% block content %}
-<h1>My Decks</h1>
+<div class="deck-list-header">
+    <h1>My Decks</h1>
+    <a href="{{ url_for('new_deck') }}" class="btn btn-primary btn-sm">New deck</a>
+</div>
 <div class="deck-list">
     {% for deck in decks %}
     <a class="deck-card" href="{{ url_for('deck_detail', deck_id=deck.id) }}">
