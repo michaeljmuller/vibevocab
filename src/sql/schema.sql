@@ -11,16 +11,27 @@ CREATE TABLE users (
     created_at  TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 
--- Decks (private per user)
+-- Decks (owned per user; may be shared with others or made public)
 -- source_language and target_language are BCP 47 codes (e.g. en-US, pt-PT)
+-- sharing_mode: 'private' | 'shared' | 'public'
 CREATE TABLE decks (
     id               SERIAL PRIMARY KEY,
     user_id          INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name             TEXT        NOT NULL,
     source_language  TEXT        NOT NULL,
     target_language  TEXT        NOT NULL,
+    sharing_mode     TEXT        NOT NULL DEFAULT 'private',
     created_at       TIMESTAMP   NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+
+-- Explicit per-user deck shares (view or modify access)
+CREATE TABLE deck_shares (
+    deck_id     INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    can_modify  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (deck_id, user_id)
 );
 
 -- Cards (words and expressions)
@@ -98,6 +109,7 @@ CREATE TABLE card_tags (
 CREATE TABLE study_sets (
     id         SERIAL    PRIMARY KEY,
     deck_id    INTEGER   NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    user_id    INTEGER   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       TEXT      NOT NULL,
     tag_query  TEXT      NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),

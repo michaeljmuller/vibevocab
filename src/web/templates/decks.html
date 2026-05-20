@@ -8,10 +8,27 @@
     {% for deck in decks %}
     <a class="deck-card" href="{{ url_for('deck_detail', deck_id=deck.id) }}">
         <div class="deck-name">{{ deck.name }}</div>
-        <div class="deck-langs">{{ deck.source_language }} → {{ deck.target_language }}</div>
+        <div class="deck-langs">{{ deck.source_language }} → {{ deck.target_language }}
+            {%- set names = deck_share_names.get(deck.id, []) -%}
+            {% if deck.sharing_mode == 'public' %}<span class="shared-by-label"> · Public</span>
+            {% elif deck.sharing_mode == 'shared' and names %}<span class="shared-by-label"> · Shared with {{ names|join(', ') }}</span>
+            {% endif %}
+        </div>
     </a>
     {% else %}
     <p>No decks found.</p>
     {% endfor %}
 </div>
+
+{% if shared_decks %}
+<h2 class="shared-decks-heading">Shared with me</h2>
+<div class="deck-list">
+    {% for deck in shared_decks %}
+    <a class="deck-card" href="{{ url_for('deck_detail', deck_id=deck.id) }}">
+        <div class="deck-name">{{ deck.name }}</div>
+        <div class="deck-langs">{{ deck.source_language }} → {{ deck.target_language }}</div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

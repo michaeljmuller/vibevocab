@@ -21,18 +21,19 @@
 </div>
 {% endif %}
 
+{% set can_edit = deck_access in ('owner', 'modify') %}
 <table class="words-table" id="words-table">
     <colgroup>
-        <col style="width:6%">
-        <col style="width:30%">
-        <col style="width:26%">
+        {% if can_edit %}<col style="width:6%">{% endif %}
+        <col style="width:{% if can_edit %}30{% else %}34{% endif %}%">
+        <col style="width:{% if can_edit %}26{% else %}28{% endif %}%">
         <col style="width:16%">
         <col style="width:10%">
         <col style="width:12%">
     </colgroup>
     <thead>
         <tr>
-            <th></th>
+            {% if can_edit %}<th></th>{% endif %}
             <th class="sortable" data-col="source">Source <span class="sort-arrow"></span></th>
             <th class="sortable" data-col="target">Target <span class="sort-arrow"></span></th>
             <th class="sortable" data-col="tags">Tags <span class="sort-arrow"></span></th>
@@ -51,7 +52,7 @@
            data-score="{{ '%06d' % prog.repetitions if prog else '000000' }}">
         {% set has_expr_audio, has_ex_audio = audio_map.get(card.id, (False, False)) %}
         <tr class="card-main">
-            <td><a href="{{ url_for('edit_card', card_id=card.id, return_url=request.path) }}" class="btn-edit-small">Edit</a></td>
+            {% if can_edit %}<td><a href="{{ url_for('edit_card', card_id=card.id, return_url=request.path) }}" class="btn-edit-small">Edit</a></td>{% endif %}
             <td><div class="cell-flex"><span class="cell-text">{{ card.source_expression }}{% if card.part_of_speech %} <span class="pos-inline">({{ card.part_of_speech }})</span>{% endif %}</span></div></td>
             <td><div class="cell-flex"><span class="cell-text">{{ card.target_expression }}</span>{% if has_expr_audio %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='expression') }}">🔊</button>{% endif %}</div></td>
             <td>{% for tag in card.tags %}<span class="tag-chip tag-chip-sm">{{ tag.name }}</span>{% endfor %}</td>
@@ -60,7 +61,7 @@
         </tr>
         {% if card.source_example or card.target_example %}
         <tr class="card-examples">
-            <td></td>
+            {% if can_edit %}<td></td>{% endif %}
             <td><div class="cell-flex"><span class="cell-text">{{ card.source_example or '' }}</span></div></td>
             <td><div class="cell-flex"><span class="cell-text">{{ card.target_example or '' }}</span>{% if has_ex_audio and card.target_example %}<button type="button" class="btn-audio" data-src="{{ url_for('serve_audio', card_id=card.id, field='example') }}">🔊</button>{% endif %}</div></td>
             <td></td>
@@ -188,7 +189,7 @@ document.querySelectorAll('td[data-utc]').forEach(td => {
     const table = document.getElementById('words-table');
     const ths = Array.from(table.querySelectorAll('thead th'));
 
-    for (let i = 1; i < ths.length - 1; i++) {
+    for (let i = {{ 1 if can_edit else 0 }}; i < ths.length - 1; i++) {
         const th = ths[i];
         const next = ths[i + 1];
         const handle = document.createElement('div');

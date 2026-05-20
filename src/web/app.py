@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
 from sqlalchemy import text
-from models import db, User, Deck, Card, Tag, StudySet, CardProgress, ReviewLog, DbState
+from models import db, User, Deck, DeckShare, Card, Tag, StudySet, CardProgress, ReviewLog, DbState
 from srs import sm2, quality_from_result, familiarity_label
 
 app = Flask(__name__)
@@ -84,6 +84,24 @@ def _load_user():
 @app.context_processor
 def _inject_globals():
     return dict(single_user_mode=bool(_SINGLE_USER_EMAIL))
+
+_ACCESS_LEVELS = {None: 0, 'view': 1, 'modify': 2, 'owner': 3}
+
+def _deck_access(deck, user):
+    if deck.user_id == user.id:
+        return 'owner'
+    share = DeckShare.query.filter_by(deck_id=deck.id, user_id=user.id).first()
+    if share:
+        return 'modify' if share.can_modify else 'view'
+    if deck.sharing_mode == 'public':
+        return 'view'
+    return None
+
+def _require_access(deck, min_level):
+    access = _deck_access(deck, g.current_user)
+    if _ACCESS_LEVELS.get(access, 0) < _ACCESS_LEVELS[min_level]:
+        abort(403)
+    return access
 
 @app.route('/login')
 def login():
@@ -253,16 +271,29 @@ def index():
 @app.route('/decks')
 def decks():
     user = g.current_user
-    user_decks = Deck.query.filter_by(user_id=user.id).all()
-    return render_template('decks.html', decks=user_decks, user=user)
+    owned = Deck.query.filter_by(user_id=user.id).all()
+    shared_ids = [s.deck_id for s in DeckShare.query.filter_by(user_id=user.id).all()]
+    shared = Deck.query.filter(Deck.id.in_(shared_ids)).all() if shared_ids else []
+    deck_share_names = {}
+    if owned:
+        rows = (DeckShare.query
+                .filter(DeckShare.deck_id.in_([d.id for d in owned]))
+                .join(User, User.id == DeckShare.user_id)
+                .add_columns(User.name)
+                .all())
+        for share, name in rows:
+            deck_share_names.setdefault(share.deck_id, []).append(name)
+    return render_template('decks.html', decks=owned, shared_decks=shared,
+                           user=user, deck_share_names=deck_share_names)
 
 
 @app.route('/deck/<int:deck_id>')
 def deck_detail(deck_id):
     from query_parser import build_filter, QueryParseError
-    user       = g.current_user
-    deck       = Deck.query.get_or_404(deck_id)
-    study_sets = StudySet.query.filter_by(deck_id=deck_id).order_by(StudySet.name).all()
+    user        = g.current_user
+    deck        = Deck.query.get_or_404(deck_id)
+    deck_access = _require_access(deck, 'view')
+    study_sets  = StudySet.query.filter_by(deck_id=deck_id, user_id=user.id).order_by(StudySet.name).all()
     card_count = Card.query.filter_by(deck_id=deck_id).count()
 
     progress_rows = db.session.execute(
@@ -302,15 +333,28 @@ def deck_detail(deck_id):
             study_set_counts[ss.id] = None
             study_set_stats[ss.id]  = None
 
+    deck_owner  = db.session.get(User, deck.user_id)
+    share_users = []
+    if deck_access == 'owner':
+        for s in DeckShare.query.filter_by(deck_id=deck_id).all():
+            u = db.session.get(User, s.user_id)
+            if u:
+                share_users.append({'share': s, 'user': u})
+    share_error = request.args.get('share_error')
+    share_email = request.args.get('share_email', '')
+
     return render_template('deck.html', deck=deck, study_sets=study_sets,
                            card_count=card_count, study_set_counts=study_set_counts,
-                           study_set_stats=study_set_stats, all_cards_stats=all_cards_stats)
+                           study_set_stats=study_set_stats, all_cards_stats=all_cards_stats,
+                           deck_access=deck_access, deck_owner=deck_owner,
+                           share_users=share_users, share_error=share_error, share_email=share_email)
 
 
 @app.route('/deck/<int:deck_id>/study-sets/new', methods=['GET', 'POST'])
 def new_study_set(deck_id):
     from query_parser import parse, QueryParseError
     deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'view')
 
     if request.method == 'POST':
         name  = request.form.get('name', '').strip()
@@ -329,7 +373,7 @@ def new_study_set(deck_id):
             return render_template('study_set_edit.html', deck=deck, study_set=None,
                                    error=error)
         now = datetime.utcnow()
-        ss  = StudySet(deck_id=deck_id, name=name, tag_query=query,
+        ss  = StudySet(deck_id=deck_id, user_id=g.current_user.id, name=name, tag_query=query,
                        created_at=now, updated_at=now)
         db.session.add(ss)
         db.session.commit()
@@ -343,6 +387,9 @@ def edit_study_set(set_id):
     from query_parser import parse, QueryParseError
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
+    _require_access(deck, 'view')
+    if study_set.user_id != g.current_user.id:
+        abort(403)
 
     if request.method == 'POST':
         name  = request.form.get('name', '').strip()
@@ -372,6 +419,10 @@ def edit_study_set(set_id):
 @app.route('/study-set/<int:set_id>/delete', methods=['POST'])
 def delete_study_set(set_id):
     study_set = StudySet.query.get_or_404(set_id)
+    deck      = Deck.query.get_or_404(study_set.deck_id)
+    _require_access(deck, 'view')
+    if study_set.user_id != g.current_user.id:
+        abort(403)
     deck_id   = study_set.deck_id
     db.session.delete(study_set)
     db.session.commit()
@@ -384,6 +435,7 @@ def study_set_quiz(set_id):
     user      = g.current_user
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
+    _require_access(deck, 'view')
     try:
         filt = build_filter(study_set.tag_query, deck.id)
         card = (Card.query
@@ -411,6 +463,7 @@ def study_set_check(set_id):
     user      = g.current_user
     study_set = StudySet.query.get_or_404(set_id)
     deck      = Deck.query.get_or_404(study_set.deck_id)
+    _require_access(deck, 'view')
     card      = Card.query.get_or_404(int(request.form['card_id']))
     action    = request.form.get('action')
     answer    = request.form.get('answer', '').strip()
@@ -426,6 +479,7 @@ def study_set_check(set_id):
 def quiz(deck_id):
     user  = g.current_user
     deck  = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'view')
     card  = (Card.query
              .outerjoin(CardProgress, db.and_(
                  CardProgress.card_id == Card.id,
@@ -459,6 +513,7 @@ NOUN_GENDERS = [
 def edit_card(card_id):
     card = Card.query.get_or_404(card_id)
     deck = Deck.query.get_or_404(card.deck_id)
+    _require_access(deck, 'modify')
     fallback_url = url_for('quiz', deck_id=deck.id)
 
     if request.method == 'POST':
@@ -502,6 +557,7 @@ def edit_card(card_id):
 @app.route('/deck/<int:deck_id>/cards/new', methods=['GET', 'POST'])
 def add_card(deck_id):
     deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'modify')
     fallback_url = url_for('deck_detail', deck_id=deck_id)
 
     if request.method == 'POST':
@@ -559,6 +615,7 @@ def add_card(deck_id):
 def quiz_card(card_id):
     card  = Card.query.get_or_404(card_id)
     deck  = Deck.query.get_or_404(card.deck_id)
+    _require_access(deck, 'view')
     check_url  = url_for('quiz_check', deck_id=deck.id)
     next_url   = url_for('quiz',       deck_id=deck.id)
     return_url = url_for('quiz',       deck_id=deck.id)
@@ -570,6 +627,7 @@ def quiz_card(card_id):
 def quiz_check(deck_id):
     user      = g.current_user
     deck      = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'view')
     card      = Card.query.get_or_404(int(request.form['card_id']))
     action    = request.form.get('action')
     answer    = request.form.get('answer', '').strip()
@@ -586,6 +644,7 @@ def deck_words(deck_id):
     from sqlalchemy.orm import joinedload
     user  = g.current_user
     deck  = Deck.query.get_or_404(deck_id)
+    deck_access = _require_access(deck, 'view')
     cards = (Card.query
              .filter_by(deck_id=deck_id)
              .options(joinedload(Card.tags))
@@ -605,13 +664,14 @@ def deck_words(deck_id):
     all_tags  = Tag.query.filter_by(deck_id=deck_id).order_by(Tag.name).all()
     return render_template('words.html', cards=cards, deck=deck, audio_map=audio_map,
                            all_tags=all_tags, progress_map=progress_map,
-                           familiarity_label=familiarity_label)
+                           familiarity_label=familiarity_label, deck_access=deck_access)
 
 
 @app.route('/deck/<int:deck_id>/tags')
 def deck_tags(deck_id):
     """Return JSON list of tag names in this deck, optionally filtered by prefix."""
-    Deck.query.get_or_404(deck_id)  # verify deck exists
+    deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'view')
     q    = request.args.get('q', '').strip().lower()
     tags = Tag.query.filter_by(deck_id=deck_id)
     if q:
@@ -623,7 +683,8 @@ def deck_tags(deck_id):
 @app.route('/card/<int:card_id>/review/override', methods=['POST'])
 def override_review(card_id):
     user = g.current_user
-    Card.query.get_or_404(card_id)
+    card = Card.query.get_or_404(card_id)
+    _require_access(Deck.query.get_or_404(card.deck_id), 'view')
     log = (ReviewLog.query
            .filter_by(user_id=user.id, card_id=card_id)
            .order_by(ReviewLog.reviewed_at.desc())
@@ -652,6 +713,7 @@ def override_review(card_id):
 @app.route('/card/<int:card_id>/tags/add', methods=['POST'])
 def card_tag_add(card_id):
     card = Card.query.get_or_404(card_id)
+    _require_access(Deck.query.get_or_404(card.deck_id), 'modify')
     data = request.get_json(force=True)
     name = (data.get('name') or '').strip()
     if not name:
@@ -678,6 +740,7 @@ def card_tag_add(card_id):
 @app.route('/card/<int:card_id>/tags/remove', methods=['POST'])
 def card_tag_remove(card_id):
     card = Card.query.get_or_404(card_id)
+    _require_access(Deck.query.get_or_404(card.deck_id), 'modify')
     data = request.get_json(force=True)
     name = (data.get('name') or '').strip()
     if not name:
@@ -700,6 +763,7 @@ def suggest(card_id):
         from llm import suggest_sentence_pairs
         card = Card.query.get_or_404(card_id)
         deck = Deck.query.get_or_404(card.deck_id)
+        _require_access(deck, 'view')
 
         data              = request.get_json(force=True)
         source_expression = (data.get('source_expression') or card.source_expression).strip()
@@ -723,6 +787,7 @@ def translate(card_id):
         from llm import translate_example
         card = Card.query.get_or_404(card_id)
         deck = Deck.query.get_or_404(card.deck_id)
+        _require_access(deck, 'view')
 
         data              = request.get_json(force=True)
         source_expression = (data.get('source_expression') or card.source_expression).strip()
@@ -747,7 +812,8 @@ def translate(card_id):
 def serve_audio(card_id, field):
     if field not in ('expression', 'example'):
         abort(404)
-    card  = Card.query.get_or_404(card_id)
+    card = Card.query.get_or_404(card_id)
+    _require_access(Deck.query.get_or_404(card.deck_id), 'view')
     audio = card.expression_audio if field == 'expression' else card.example_audio
     if not audio:
         abort(404)
@@ -773,6 +839,7 @@ def generate_audio(card_id, field):
         from tts import generate_audio as tts_generate
         card = Card.query.get_or_404(card_id)
         deck = Deck.query.get_or_404(card.deck_id)
+        _require_access(deck, 'view')
 
         data = request.get_json(force=True)
         text = (data.get('text') or '').strip()
@@ -796,6 +863,7 @@ def deck_suggest(deck_id):
     try:
         from llm import suggest_sentence_pairs
         deck = Deck.query.get_or_404(deck_id)
+        _require_access(deck, 'view')
         data              = request.get_json(force=True)
         source_expression = (data.get('source_expression') or '').strip()
         target_expression = (data.get('target_expression') or '').strip()
@@ -815,6 +883,7 @@ def deck_translate(deck_id):
     try:
         from llm import translate_example
         deck = Deck.query.get_or_404(deck_id)
+        _require_access(deck, 'view')
         data              = request.get_json(force=True)
         source_expression = (data.get('source_expression') or '').strip()
         target_expression = (data.get('target_expression') or '').strip()
@@ -835,6 +904,7 @@ def deck_translate(deck_id):
 @app.route('/deck/<int:deck_id>/audio/generate', methods=['POST'])
 def deck_generate_audio(deck_id):
     deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'view')
     try:
         from tts import generate_audio as tts_generate
         data = request.get_json(force=True)
@@ -855,3 +925,72 @@ def deck_generate_audio(deck_id):
         return jsonify(audio_b64=base64.b64encode(audio).decode())
     except Exception as e:
         return jsonify(error=str(e)), 500
+
+
+@app.route('/deck/<int:deck_id>/share/add', methods=['POST'])
+def deck_share_add(deck_id):
+    deck    = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'owner')
+    email   = request.form.get('email', '').strip().lower()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    def err(msg):
+        if is_ajax:
+            return jsonify(ok=False, error=msg)
+        return redirect(url_for('deck_detail', deck_id=deck_id,
+                                share_error=msg, share_email=email))
+
+    if not email:
+        return err('Email is required.')
+    target = User.query.filter_by(email=email).first()
+    if not target:
+        return err(f'No user found with email {email}.')
+    if target.id == g.current_user.id:
+        return err('You cannot share a deck with yourself.')
+    if DeckShare.query.filter_by(deck_id=deck_id, user_id=target.id).first():
+        return err(f'{target.name} already has access to this deck.')
+
+    db.session.add(DeckShare(deck_id=deck_id, user_id=target.id,
+                             can_modify=False, created_at=datetime.utcnow()))
+    db.session.commit()
+    if is_ajax:
+        return jsonify(ok=True, user_id=target.id, name=target.name, email=target.email)
+    return redirect(url_for('deck_detail', deck_id=deck_id))
+
+
+@app.route('/deck/<int:deck_id>/share/<int:user_id>/set-modify', methods=['POST'])
+def deck_share_set_modify(deck_id, user_id):
+    deck  = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'owner')
+    share = DeckShare.query.filter_by(deck_id=deck_id, user_id=user_id).first_or_404()
+    share.can_modify = request.form.get('can_modify') == '1'
+    db.session.commit()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True)
+    return redirect(url_for('deck_detail', deck_id=deck_id))
+
+
+@app.route('/deck/<int:deck_id>/share/<int:user_id>/remove', methods=['POST'])
+def deck_share_remove(deck_id, user_id):
+    deck  = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'owner')
+    share = DeckShare.query.filter_by(deck_id=deck_id, user_id=user_id).first_or_404()
+    db.session.delete(share)
+    db.session.commit()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True)
+    return redirect(url_for('deck_detail', deck_id=deck_id))
+
+
+@app.route('/deck/<int:deck_id>/set-sharing-mode', methods=['POST'])
+def deck_set_sharing_mode(deck_id):
+    deck = Deck.query.get_or_404(deck_id)
+    _require_access(deck, 'owner')
+    mode = request.form.get('sharing_mode', 'private')
+    if mode not in ('private', 'shared', 'public'):
+        mode = 'private'
+    deck.sharing_mode = mode
+    db.session.commit()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True)
+    return redirect(url_for('deck_detail', deck_id=deck_id))

@@ -28,8 +28,17 @@ class Deck(db.Model):
     name            = db.Column(db.Text, nullable=False)
     source_language = db.Column(db.Text, nullable=False)
     target_language = db.Column(db.Text, nullable=False)
+    sharing_mode    = db.Column(db.Text, nullable=False, default='private')
     created_at      = db.Column(db.DateTime, nullable=False)
     updated_at      = db.Column(db.DateTime, nullable=False)
+
+
+class DeckShare(db.Model):
+    __tablename__ = 'deck_shares'
+    deck_id    = db.Column(db.Integer, db.ForeignKey('decks.id', ondelete='CASCADE'), primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    can_modify = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Tag(db.Model):
@@ -44,6 +53,7 @@ class StudySet(db.Model):
     __tablename__ = 'study_sets'
     id         = db.Column(db.Integer, primary_key=True)
     deck_id    = db.Column(db.Integer, db.ForeignKey('decks.id'), nullable=False)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name       = db.Column(db.Text, nullable=False)
     tag_query  = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False)

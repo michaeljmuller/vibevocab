@@ -16,19 +16,27 @@
 {% block content %}
 <div class="deck-header">
     <h1>{{ deck.name }}</h1>
-    <div class="subtitle">{{ deck.source_language }} → {{ deck.target_language }}</div>
+    <div class="subtitle">{{ deck.source_language }} → {{ deck.target_language }}
+        {% if deck_access != 'owner' %}<span class="shared-by-label">· Shared by {{ deck_owner.name }}</span>
+        {% elif deck.sharing_mode == 'public' %}<span class="shared-by-label">· Public</span>
+        {% elif deck.sharing_mode == 'shared' and share_users %}<span class="shared-by-label">· Shared with {% for su in share_users %}{{ su.user.name }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        {% endif %}
+    </div>
 </div>
 
 <div class="study-set-list">
-    <a class="study-set-item study-set-all" href="{{ url_for('quiz', deck_id=deck.id) }}">
-        <div class="study-set-name">All cards</div>
+    <div class="study-set-item">
+        <div class="study-set-name" style="color: inherit;">All cards</div>
         <div class="study-set-meta">{{ card_count }} card{{ 's' if card_count != 1 }}</div>
         {{ score_bar(all_cards_stats) }}
-    </a>
+        <div class="study-set-actions">
+            <a href="{{ url_for('quiz', deck_id=deck.id) }}" class="btn-suggest">Study</a>
+        </div>
+    </div>
 
     {% for ss in study_sets %}
     <div class="study-set-item">
-        <a class="study-set-name" href="{{ url_for('study_set_quiz', set_id=ss.id) }}">{{ ss.name }}</a>
+        <div class="study-set-name">{{ ss.name }}</div>
         <div class="study-set-meta">
             {%- set n = study_set_counts.get(ss.id) -%}
             {%- if n is not none %}{{ n }} card{{ 's' if n != 1 }} · {% endif -%}
@@ -36,23 +44,195 @@
         </div>
         {{ score_bar(study_set_stats.get(ss.id)) }}
         <div class="study-set-actions">
-            <a href="{{ url_for('edit_study_set', set_id=ss.id) }}" class="btn-suggest">Edit</a>
-            <form method="POST" action="{{ url_for('delete_study_set', set_id=ss.id) }}" style="display:inline">
-                <button type="submit" class="btn-suggest btn-suggest-danger"
-                        onclick="return confirm('Delete "{{ ss.name }}"?')">Delete</button>
-            </form>
+            <a href="{{ url_for('study_set_quiz', set_id=ss.id) }}" class="btn-suggest">Study</a>
+            {% if deck_access %}
+            <div class="study-set-actions-right">
+                <a href="{{ url_for('edit_study_set', set_id=ss.id) }}" class="btn-suggest">Edit</a>
+                <form method="POST" action="{{ url_for('delete_study_set', set_id=ss.id) }}" style="display:inline">
+                    <button type="submit" class="btn-suggest btn-suggest-danger"
+                            onclick="return confirm('Delete &quot;{{ ss.name }}&quot;?')">Delete</button>
+                </form>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
 
     {% if not study_sets %}
-    <p class="study-set-empty">No study sets yet. Create one to study a subset of cards.</p>
+    <p class="study-set-empty">No study sets yet. Create a study set to study a subset of cards.</p>
     {% endif %}
 </div>
 
 <div class="actions" style="margin-top: 1.5rem">
     <a href="{{ url_for('new_study_set', deck_id=deck.id) }}" class="btn btn-primary">New study set</a>
+    {% if deck_access in ('owner', 'modify') %}
     <a href="{{ url_for('add_card', deck_id=deck.id) }}" class="btn btn-secondary">Add card</a>
+    {% endif %}
     <a href="{{ url_for('deck_words', deck_id=deck.id) }}" class="btn btn-secondary">Browse words</a>
+    {% if deck_access == 'owner' %}
+    <button type="button" class="btn btn-secondary" onclick="openSharingModal()">Sharing…</button>
+    {% endif %}
 </div>
+
+{% if deck_access == 'owner' %}
+<div id="sharing-modal-backdrop" class="sharing-modal-backdrop" style="display:none" onclick="closeSharingModal(event)">
+    <div class="sharing-modal" onclick="event.stopPropagation()">
+        <div class="sharing-modal-header">
+            <span class="sharing-modal-title">Sharing</span>
+            <button type="button" class="sharing-modal-close" onclick="closeSharingModal()">&times;</button>
+        </div>
+        <div class="sharing-modal-body">
+            <div class="share-public-row">
+                <label class="share-field-label">Who can see this deck</label>
+                <form method="post" action="{{ url_for('deck_set_sharing_mode', deck_id=deck.id) }}" id="visibility-form">
+                    <select name="sharing_mode" id="visibility-select" onchange="onVisibilityChange(this)" class="share-visibility-select">
+                        <option value="private"{% if deck.sharing_mode == 'private' %} selected{% endif %}>Private</option>
+                        <option value="shared"{% if deck.sharing_mode == 'shared' %} selected{% endif %}>Shared with specific users</option>
+                        <option value="public"{% if deck.sharing_mode == 'public' %} selected{% endif %}>Public (view only for all users)</option>
+                    </select>
+                </form>
+            </div>
+
+            <div id="share-specific-controls" {% if deck.sharing_mode != 'shared' %}style="display:none"{% endif %}>
+                <div class="share-users-section">
+                    {% if share_users %}
+                    <label class="share-field-label">Shared with</label>
+                    <table class="share-table" id="shares-table">
+                        <thead><tr><th>User</th><th>Access</th><th></th></tr></thead>
+                        <tbody>
+                        {% for su in share_users %}
+                        <tr>
+                            <td>
+                                <span class="share-user-name">{{ su.user.name }}</span>
+                                <span class="share-user-email">{{ su.user.email }}</span>
+                            </td>
+                            <td>
+                                <select class="share-access-select" onchange="onAccessChange(this, {{ su.user.id }})">
+                                    <option value="0"{% if not su.share.can_modify %} selected{% endif %}>View only</option>
+                                    <option value="1"{% if su.share.can_modify %} selected{% endif %}>Can modify</option>
+                                </select>
+                            </td>
+                            <td>
+                                <button type="button" class="btn-suggest btn-suggest-danger" onclick="removeShare({{ su.user.id }}, this)">Remove</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+                </div>
+
+                <div class="share-add-section">
+                    <label class="share-field-label">Add person</label>
+                    <form id="add-person-form" class="share-add-form">
+                        <div id="share-add-error" class="share-error" style="display:none"></div>
+                        <input type="email" name="email" placeholder="Email address"
+                               class="share-email-input" autocomplete="off">
+                        <button type="submit" class="btn btn-primary btn-sm">Share</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var DECK_ID = {{ deck.id }};
+
+    window.openSharingModal = function() {
+        document.getElementById('sharing-modal-backdrop').style.display = 'flex';
+    };
+    window.closeSharingModal = function(event) {
+        if (!event || event.target === document.getElementById('sharing-modal-backdrop')) {
+            document.getElementById('sharing-modal-backdrop').style.display = 'none';
+        }
+    };
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeSharingModal();
+    });
+
+    {% if share_error %}
+    openSharingModal();
+    {% endif %}
+
+    function post(url, data) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams(data)
+        }).then(function(r) { return r.json(); });
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    window.onVisibilityChange = function(sel) {
+        document.getElementById('share-specific-controls').style.display = sel.value === 'shared' ? '' : 'none';
+        post('/deck/' + DECK_ID + '/set-sharing-mode', {sharing_mode: sel.value});
+    };
+
+    window.onAccessChange = function(sel, userId) {
+        var oldVal = sel.value === '1' ? '0' : '1';
+        post('/deck/' + DECK_ID + '/share/' + userId + '/set-modify', {can_modify: sel.value})
+            .then(function(d) { if (!d.ok) sel.value = oldVal; })
+            .catch(function() { sel.value = oldVal; });
+    };
+
+    window.removeShare = function(userId, btn) {
+        post('/deck/' + DECK_ID + '/share/' + userId + '/remove', {})
+            .then(function(d) {
+                if (!d.ok) return;
+                var row = btn.closest('tr');
+                var tbody = row.parentNode;
+                row.remove();
+                if (tbody.rows.length === 0) {
+                    document.querySelector('.share-users-section').innerHTML = '';
+                }
+            });
+    };
+
+    var addForm = document.getElementById('add-person-form');
+    var errEl   = document.getElementById('share-add-error');
+    addForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var emailEl = addForm.querySelector('[name="email"]');
+        errEl.style.display = 'none';
+        post('/deck/' + DECK_ID + '/share/add', {email: emailEl.value.trim()})
+            .then(function(d) {
+                if (d.ok) {
+                    emailEl.value = '';
+                    appendShareRow(d);
+                } else {
+                    errEl.textContent = d.error || 'Error'; errEl.style.display = '';
+                }
+            })
+            .catch(function() { errEl.textContent = 'Request failed'; errEl.style.display = ''; });
+    });
+
+    function appendShareRow(d) {
+        var table = document.getElementById('shares-table');
+        if (!table) {
+            var section = document.querySelector('.share-users-section');
+            var lbl = document.createElement('label');
+            lbl.className = 'share-field-label'; lbl.textContent = 'Shared with';
+            table = document.createElement('table');
+            table.id = 'shares-table'; table.className = 'share-table';
+            table.innerHTML = '<thead><tr><th>User</th><th>Access</th><th></th></tr></thead><tbody></tbody>';
+            section.appendChild(lbl);
+            section.appendChild(table);
+        }
+        var row = document.createElement('tr');
+        row.innerHTML =
+            '<td><span class="share-user-name">' + esc(d.name) + '</span> ' +
+            '<span class="share-user-email">' + esc(d.email) + '</span></td>' +
+            '<td><select class="share-access-select" onchange="onAccessChange(this,' + d.user_id + ')">' +
+            '<option value="0" selected>View only</option>' +
+            '<option value="1">Can modify</option></select></td>' +
+            '<td><button type="button" class="btn-suggest btn-suggest-danger" ' +
+            'onclick="removeShare(' + d.user_id + ',this)">Remove</button></td>';
+        table.querySelector('tbody').appendChild(row);
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}
