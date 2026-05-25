@@ -9,3 +9,7 @@
 - make a "back up now" button.  or back up after some idle period.  block all write operations during backup?
 - add the ability to delete a word/expression (and delete the dupicate entry for apontamento)
 - keep track of how much disk space is being used by backups
+- change column header from "score" to "status"
+- it's visually incongruous to have the dimension of the tags not match the status/score.
+- does the baseline of the "edit" button align with the text of source/target/etc?
+- can we tighten up the list a little, place the rows closer together?
