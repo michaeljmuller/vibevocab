@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vibevocab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
     volumes:
-      - ./src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./db:/var/lib/postgresql/data
+      - ../../src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ${DB_DIR:-../../db}:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -18,7 +18,7 @@ services:
       retries: 10
 
   web:
-    build: ./src/web
+    build: ${WEB_DIR:-../../src/web}
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -47,8 +47,8 @@ services:
       TTS_SPEAKER_BOOST: ${TTS_SPEAKER_BOOST:-true}
       CARD_FLIP_INTER_AUDIO_PAUSE_MS: ${CARD_FLIP_INTER_AUDIO_PAUSE_MS:-1500}
     volumes:
-      - ./src/web:/app
-      - ./prompts:/prompts:ro
+      - ${WEB_DIR:-../../src/web}:/app
+      - ../../prompts:/prompts:ro
     ports:
       - "5001:5000"
     depends_on:
@@ -64,8 +64,8 @@ services:
       BACKUP_INACTIVITY_MINUTES: ${BACKUP_INACTIVITY_MINUTES:-15}
       BACKUP_POLL_SECONDS: ${BACKUP_POLL_SECONDS:-60}
     volumes:
-      - ./backups:/backups
-      - ./src/scripts/watcher.sh:/watcher.sh:ro
+      - ${BACKUP_DIR:-../../backups}:/backups
+      - ../../src/scripts/watcher.sh:/watcher.sh:ro
     depends_on:
       db:
         condition: service_healthy

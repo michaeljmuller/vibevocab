@@ -1,0 +1,39 @@
+VibeVocab Setup
+===============
+
+Prerequisite: Docker (everything else runs in containers)
+
+
+1. Clone the repo and enter the directory.
+
+2. Create your environment file:
+
+     cp src/docker/.env.example src/docker/.env
+
+   Edit src/docker/.env and fill in at minimum:
+
+   - Authentication: set SINGLE_USER=your@email.com for single-user mode, OR
+     provide GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google OAuth
+     (see .env.example for instructions on creating OAuth credentials).
+
+   - LLM: set LLM_API_KEY for AI-generated examples. Defaults to OpenAI
+     (gpt-4o-mini). For Anthropic, also set LLM_PROVIDER=anthropic. For local
+     Ollama, see the LLM section in .env.example.
+
+   - TTS: set ELEVENLABS_API_KEY and TTS_VOICE_ID for audio. Leave blank to
+     run without audio.
+
+3. Start the services:
+
+     docker compose -f src/docker/docker-compose.yml up   # from project root
+     # or: cd src/docker && docker compose up
+
+   On first start, Docker creates the db/ and backups/ directories and loads
+   the database schema automatically. No manual setup needed.
+
+4. Open http://localhost:5001
+
+
+Utility scripts
+---------------
+utils/db-shell.sh    Open a psql shell to the running database
