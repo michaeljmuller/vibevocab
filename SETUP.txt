@@ -47,5 +47,5 @@ Podman can be used in place of Docker. Set DOCKER=podman in your environment
   export DOCKER=podman
   podman compose -f src/docker/docker-compose.yml up
 
-If using a local Ollama instance, use host.containers.internal instead of
-host.docker.internal in LLM_BASE_URL.
+If you access any host-side services from containers, use host.containers.internal
+instead of host.docker.internal.
