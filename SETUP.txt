@@ -31,7 +31,7 @@ Prerequisite: Docker (everything else runs in containers)
    On first start, Docker creates the db/ and backups/ directories and loads
    the database schema automatically. No manual setup needed.
 
-4. Open http://localhost:5001
+4. Open http://localhost:5001 (or the port set by APP_PORT in your .env)
 
 
 Utility scripts

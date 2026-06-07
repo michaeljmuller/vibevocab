@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Backups — VibeVocab Admin{% endblock %}
+{% block content %}
+<div class="admin-page">
+    <h1>Backups</h1>
+
+    {% if error %}<p class="admin-error">{{ error }}</p>{% endif %}
+    {% if success %}<p class="admin-success">{{ success }}</p>{% endif %}
+
+    {% if not s3_configured %}
+    <p class="admin-error">S3 backup storage is not configured (S3_BUCKET not set).</p>
+    {% else %}
+
+    <div class="admin-card" style="margin-bottom: 1rem; padding: 1rem 1.25rem; display:flex; align-items:center; justify-content:space-between; gap:1rem">
+        <div>
+            <strong>Back up now</strong>
+            <span class="admin-muted"> — saves a snapshot of the current database to S3</span>
+        </div>
+        <form method="post" action="{{ url_for('admin_backups_backup') }}">
+            <button type="submit" class="btn btn-primary btn-sm">Back up now</button>
+        </form>
+    </div>
+
+    {% if not by_env %}
+    <div class="admin-card" style="padding: 1.25rem 1rem; color: #888; font-size: 0.9rem;">No backups found.</div>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_backups_restore') }}">
+        <div class="admin-card">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% set ns = namespace(first=true) %}
+                {% for env_name, backups in by_env.items()|sort(attribute='0') %}
+                    {% set is_current = env_name == current_env %}
+                    <tr class="admin-env-header">
+                        <td colspan="4">
+                            {{ env_name }}
+                            {% if is_current %}<span class="admin-env-current">current</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% for b in backups %}
+                    <tr>
+                        <td style="width:2rem; padding-left:1.5rem">
+                            <input type="radio" name="key" value="{{ b.key }}"
+                                   {% if ns.first %}checked{% endif %}>
+                            {% set ns.first = false %}
+                        </td>
+                        <td>{{ b.key.split('/')[-1] }}</td>
+                        <td class="admin-muted" style="white-space:nowrap">{{ '%.1f MB' % (b.size / 1048576) }}</td>
+                        <td class="admin-muted" style="white-space:nowrap">{{ b.modified.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="admin-add-form">
+                <div class="admin-restore-warning">
+                    <p><strong>Warning:</strong> Restoring permanently replaces all current data.
+                    A safety backup is saved to S3 before the restore begins.</p>
+                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer">
+                        <input type="checkbox" name="confirm" required>
+                        I understand this will replace all data
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-suggest-danger">Restore selected backup</button>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

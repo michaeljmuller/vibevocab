@@ -1,8 +1,11 @@
 import os
 import re
+import sys
 import base64
 import types
 import threading
+import subprocess
+import tempfile
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
 from sqlalchemy import text
@@ -110,8 +113,20 @@ def last_interaction():
         return '999999'
     return str(int((datetime.utcnow() - ts).total_seconds()))
 
-_SINGLE_USER_EMAIL = os.environ.get('SINGLE_USER', '')
-_single_user_id    = None   # cached after first lookup
+_SINGLE_USER_EMAIL    = os.environ.get('SINGLE_USER', '')
+_BOOTSTRAP_USER_EMAIL = os.environ.get('BOOTSTRAP_USER', '')
+_single_user_id       = None   # cached after first lookup
+
+if _BOOTSTRAP_USER_EMAIL:
+    with app.app_context():
+        if not User.query.filter_by(email=_BOOTSTRAP_USER_EMAIL).first():
+            db.session.add(User(email=_BOOTSTRAP_USER_EMAIL, name=_BOOTSTRAP_USER_EMAIL,
+                                is_admin=True, created_at=datetime.utcnow()))
+            db.session.commit()
+elif not _SINGLE_USER_EMAIL:
+    with app.app_context():
+        if User.query.count() == 0:
+            sys.exit("ERROR: BOOTSTRAP_USER must be set when starting against an empty database.")
 
 from authlib.integrations.flask_client import OAuth
 oauth  = OAuth(app)
@@ -173,9 +188,29 @@ def _require_access(deck, min_level):
         abort(403)
     return access
 
+def _require_admin():
+    if not g.current_user or not g.current_user.is_admin:
+        abort(403)
+
+def _s3_client():
+    import boto3
+    kwargs = dict(
+        aws_access_key_id=os.environ['S3_ACCESS_KEY'],
+        aws_secret_access_key=os.environ['S3_SECRET_KEY'],
+    )
+    if os.environ.get('S3_REGION'):
+        kwargs['region_name'] = os.environ['S3_REGION']
+    endpoint = os.environ.get('S3_ENDPOINT', '')
+    if endpoint:
+        if not endpoint.startswith(('http://', 'https://')):
+            endpoint = 'https://' + endpoint
+        kwargs['endpoint_url'] = endpoint
+    return boto3.client('s3', **kwargs)
+
 @app.route('/login')
 def login():
-    return render_template('login.html')
+    error = request.args.get('error')
+    return render_template('login.html', error=error)
 
 @app.route('/auth/google')
 def auth_google():
@@ -187,10 +222,7 @@ def auth_google_callback():
     info  = token['userinfo']
     user  = User.query.filter_by(email=info['email']).first()
     if not user:
-        user = User(email=info['email'], name=info['name'],
-                    avatar_url=info.get('picture'), created_at=datetime.utcnow())
-        db.session.add(user)
-        db.session.commit()
+        return redirect(url_for('login', error='not_authorized'))
     session['user_id'] = user.id
     return redirect(url_for('decks'))
 
@@ -332,6 +364,171 @@ def _do_quiz_check(deck, card, action, answer, check_url, next_url, return_url, 
                            progress=progress,
                            familiarity=familiarity_label(progress.repetitions) if progress else None)
 
+
+@app.route('/admin/users')
+def admin_users():
+    _require_admin()
+    users = User.query.order_by(User.created_at).all()
+    error = request.args.get('error')
+    return render_template('admin_users.html', users=users, error=error)
+
+@app.route('/admin/users/add', methods=['POST'])
+def admin_users_add():
+    _require_admin()
+    email = request.form.get('email', '').strip().lower()
+    name  = request.form.get('name', '').strip()
+    if not email:
+        return redirect(url_for('admin_users', error='Email is required.'))
+    if not name:
+        return redirect(url_for('admin_users', error='Name is required.'))
+    if User.query.filter_by(email=email).first():
+        return redirect(url_for('admin_users', error=f'{email} already exists.'))
+    db.session.add(User(email=email, name=name, created_at=datetime.utcnow()))
+    db.session.commit()
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/remove', methods=['POST'])
+def admin_users_remove(user_id):
+    _require_admin()
+    if user_id == g.current_user.id:
+        return redirect(url_for('admin_users', error='You cannot remove your own account.'))
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/update', methods=['POST'])
+def admin_users_update(user_id):
+    _require_admin()
+    user  = User.query.get_or_404(user_id)
+    name  = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip().lower()
+    if not name:
+        return redirect(url_for('admin_users', error='Name is required.'))
+    if not email:
+        return redirect(url_for('admin_users', error='Email is required.'))
+    if email != user.email and User.query.filter_by(email=email).first():
+        return redirect(url_for('admin_users', error=f'{email} is already in use.'))
+    user.name  = name
+    user.email = email
+    if user.id != g.current_user.id:
+        user.is_admin = 'is_admin' in request.form
+    db.session.commit()
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/toggle-admin', methods=['POST'])
+def admin_users_toggle_admin(user_id):
+    _require_admin()
+    if user_id == g.current_user.id:
+        return redirect(url_for('admin_users', error='You cannot change your own admin status.'))
+    user = User.query.get_or_404(user_id)
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/backups')
+def admin_backups():
+    _require_admin()
+    bucket  = os.environ.get('S3_BUCKET', '')
+    env     = os.environ.get('ENVIRONMENT', '')
+    by_env  = {}
+    error   = request.args.get('error')
+    success = request.args.get('success')
+    if bucket:
+        try:
+            s3   = _s3_client()
+            resp = s3.list_objects_v2(Bucket=bucket)
+            for obj in sorted(resp.get('Contents', []), key=lambda o: o['LastModified'], reverse=True):
+                key_env = obj['Key'].split('/')[0]
+                by_env.setdefault(key_env, []).append({
+                    'key':      obj['Key'],
+                    'size':     obj['Size'],
+                    'modified': obj['LastModified'],
+                })
+        except Exception as e:
+            error = f'Could not list backups: {e}'
+    return render_template('admin_backups.html', by_env=by_env, current_env=env,
+                           error=error, success=success, s3_configured=bool(bucket))
+
+@app.route('/admin/backups/backup', methods=['POST'])
+def admin_backups_backup():
+    _require_admin()
+    bucket  = os.environ.get('S3_BUCKET', '')
+    env     = os.environ.get('ENVIRONMENT', '')
+    db_host = os.environ['DB_HOST']
+    db_port = os.environ.get('DB_PORT', '5432')
+    db_user = os.environ['DB_USER']
+    db_name = os.environ['DB_NAME']
+    pg_env  = {**os.environ, 'PGPASSWORD': os.environ['DB_PASSWORD']}
+    try:
+        key = f'{env}/backup_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.sql'
+        with tempfile.NamedTemporaryFile(suffix='.sql', delete=False) as f:
+            tmp = f.name
+        subprocess.run(
+            ['pg_dump', '-h', db_host, '-p', db_port, '-U', db_user, '-f', tmp, db_name],
+            env=pg_env, check=True,
+        )
+        _s3_client().upload_file(tmp, bucket, key)
+        os.unlink(tmp)
+        return redirect(url_for('admin_backups', success=f'Backup saved: {key}'))
+    except Exception as e:
+        return redirect(url_for('admin_backups', error=f'Backup failed: {e}'))
+
+@app.route('/admin/backups/restore', methods=['POST'])
+def admin_backups_restore():
+    _require_admin()
+    key     = request.form.get('key', '').strip()
+    confirm = request.form.get('confirm', '')
+    bucket  = os.environ.get('S3_BUCKET', '')
+    env     = os.environ.get('ENVIRONMENT', '')
+    if not confirm:
+        return redirect(url_for('admin_backups', error='You must confirm the restore.'))
+    if not key or '/' not in key:
+        return redirect(url_for('admin_backups', error='Invalid backup selection.'))
+
+    db_host = os.environ['DB_HOST']
+    db_port = os.environ.get('DB_PORT', '5432')
+    db_user = os.environ['DB_USER']
+    db_name = os.environ['DB_NAME']
+    pg_env  = {**os.environ, 'PGPASSWORD': os.environ['DB_PASSWORD']}
+
+    try:
+        s3 = _s3_client()
+
+        # Safety backup
+        safety_key = f'{env}/pre_restore_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.sql'
+        with tempfile.NamedTemporaryFile(suffix='.sql', delete=False) as f:
+            safety_path = f.name
+        subprocess.run(
+            ['pg_dump', '-h', db_host, '-p', db_port, '-U', db_user, '-f', safety_path, db_name],
+            env=pg_env, check=True,
+        )
+        s3.upload_file(safety_path, bucket, safety_key)
+        os.unlink(safety_path)
+
+        # Download and restore
+        with tempfile.NamedTemporaryFile(suffix='.sql', delete=False) as f:
+            restore_path = f.name
+        s3.download_file(bucket, key, restore_path)
+        subprocess.run(
+            ['psql', '-h', db_host, '-p', db_port, '-U', db_user, 'postgres',
+             '-c', f'DROP DATABASE IF EXISTS "{db_name}"',
+             '-c', f'CREATE DATABASE "{db_name}"'],
+            env=pg_env, check=True,
+        )
+        with open(restore_path) as f:
+            subprocess.run(
+                ['psql', '-h', db_host, '-p', db_port, '-U', db_user, db_name],
+                stdin=f, env=pg_env, check=True,
+            )
+        os.unlink(restore_path)
+
+        db.engine.dispose()
+        session.clear()
+        return redirect(url_for('login'))
+
+    except Exception as e:
+        return redirect(url_for('admin_backups', error=f'Restore failed: {e}'))
 
 @app.route('/')
 def index():

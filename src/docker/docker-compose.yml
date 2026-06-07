@@ -27,6 +27,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key}
       SINGLE_USER: ${SINGLE_USER:-}
+      BOOTSTRAP_USER: ${BOOTSTRAP_USER:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
@@ -46,28 +47,39 @@ services:
       TTS_STYLE: ${TTS_STYLE:-0.08}
       TTS_SPEAKER_BOOST: ${TTS_SPEAKER_BOOST:-true}
       CARD_FLIP_INTER_AUDIO_PAUSE_MS: ${CARD_FLIP_INTER_AUDIO_PAUSE_MS:-1500}
+      ENVIRONMENT: ${ENVIRONMENT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_REGION: ${S3_REGION:-}
     volumes:
       - ${WEB_DIR:-../../src/web}:/app
       - ../../prompts:/prompts:ro
     ports:
-      - "5001:5000"
+      - "${APP_PORT:-5001}:5000"
     depends_on:
       db:
         condition: service_healthy
 
   backup:
-    image: postgres:16
+    build: ./images/database
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
       PGUSER: ${POSTGRES_USER:-vibevocab}
       PGDATABASE: ${POSTGRES_DB:-vibevocab}
       BACKUP_INACTIVITY_MINUTES: ${BACKUP_INACTIVITY_MINUTES:-15}
       BACKUP_POLL_SECONDS: ${BACKUP_POLL_SECONDS:-60}
+      ENVIRONMENT: ${ENVIRONMENT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_REGION: ${S3_REGION:-}
     volumes:
-      - ${BACKUP_DIR:-../../backups}:/backups
       - ../../src/scripts/watcher.sh:/watcher.sh:ro
     depends_on:
       db:
         condition: service_healthy
-    command: bash -c "apt-get update -qq && apt-get install -y -qq curl && bash /watcher.sh"
+    command: bash /watcher.sh
     restart: unless-stopped

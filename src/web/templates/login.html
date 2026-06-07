@@ -3,6 +3,9 @@
 {% block content %}
 <div class="login-page">
     <h1>VibeVocab</h1>
+    {% if error == 'not_authorized' %}
+    <p class="error">Your account is not authorized to access this application.</p>
+    {% endif %}
     <a href="{{ url_for('auth_google') }}" class="btn btn-primary">Sign in with Google</a>
 </div>
 {% endblock %}

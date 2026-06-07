@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}Users — VibeVocab Admin{% endblock %}
+{% block content %}
+<div class="admin-page">
+    <h1>Users</h1>
+
+    {% if error %}<p class="admin-error">{{ error }}</p>{% endif %}
+
+    <div class="admin-card">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for user in users %}
+                <tr>
+                    <td class="admin-cell-email">{{ user.email }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>
+                        {% if user.is_admin %}
+                        <span class="role-label role-admin">Admin</span>
+                        {% else %}
+                        <span class="role-label role-user">User</span>
+                        {% endif %}
+                    </td>
+                    <td class="admin-cell-actions">
+                        {% if user.id != g.current_user.id %}
+                        <button type="button" class="btn-edit-small edit-btn"
+                                data-id="{{ user.id }}"
+                                data-email="{{ user.email }}"
+                                data-name="{{ user.name }}"
+                                data-is-admin="{{ 'true' if user.is_admin else 'false' }}">Edit</button>
+                        <form method="post" action="{{ url_for('admin_users_remove', user_id=user.id) }}"
+                              onsubmit="return confirm('Remove {{ user.email }}? This deletes all their data.')">
+                            <button class="btn-edit-small btn-edit-danger">Remove</button>
+                        </form>
+                        {% else %}
+                        <span class="admin-you-label">You</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="admin-add-form">
+            <h2 class="admin-add-heading">Add user</h2>
+            <form method="post" action="{{ url_for('admin_users_add') }}" class="admin-add-fields">
+                <div class="admin-add-field">
+                    <label>Email</label>
+                    <input type="email" name="email" placeholder="user@example.com" required>
+                </div>
+                <div class="admin-add-field">
+                    <label>Name</label>
+                    <input type="text" name="name" placeholder="Full name" required>
+                </div>
+                <div class="admin-add-submit">
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit user modal -->
+<div class="modal-backdrop hidden" id="editModalBackdrop" onclick="closeEditModal()"></div>
+<div class="modal hidden" id="editModal">
+    <div class="modal-header">
+        <span class="modal-title">Edit User</span>
+        <button type="button" class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <form method="post" id="editForm">
+        <div class="modal-body">
+            <div class="field">
+                <label>Email</label>
+                <input type="email" name="email" id="editEmail" required>
+            </div>
+            <div class="field">
+                <label>Name</label>
+                <input type="text" name="name" id="editName" required>
+            </div>
+            <label class="checkbox-label" id="editAdminRow">
+                <input type="checkbox" name="is_admin" id="editIsAdmin">
+                Admin
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.querySelectorAll('.edit-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var d = this.dataset;
+        document.getElementById('editEmail').value     = d.email;
+        document.getElementById('editName').value      = d.name;
+        document.getElementById('editIsAdmin').checked = d.isAdmin === 'true';
+        document.getElementById('editForm').action     = '/admin/users/' + d.id + '/update';
+        document.getElementById('editModalBackdrop').classList.remove('hidden');
+        document.getElementById('editModal').classList.remove('hidden');
+        document.getElementById('editName').focus();
+    });
+});
+function closeEditModal() {
+    document.getElementById('editModalBackdrop').classList.add('hidden');
+    document.getElementById('editModal').classList.add('hidden');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEditModal();
+});
+</script>
+{% endblock %}

@@ -9,3 +9,4 @@ authlib
 babel
 pycountry
 requests
+boto3

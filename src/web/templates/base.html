@@ -11,13 +11,41 @@
     <header>
         <a href="{{ url_for('index') }}">VibeVocab</a>
         {% if g.current_user %}
-        <div class="header-user">
-            {% if g.current_user.avatar_url %}<img src="{{ g.current_user.avatar_url }}" class="avatar">{% endif %}
-            <span>{{ g.current_user.name }}</span>
-            {% if not single_user_mode %}
-            <form method="post" action="{{ url_for('logout') }}"><button class="btn-signout">Sign out</button></form>
-            {% endif %}
+        <div class="user-menu" id="userMenu">
+            <button class="user-menu-trigger" id="userMenuTrigger" type="button">
+                {% if g.current_user.avatar_url %}<img src="{{ g.current_user.avatar_url }}" class="avatar">{% endif %}
+                <span>{{ g.current_user.name }}</span>
+                <span class="user-menu-caret">▾</span>
+            </button>
+            <div class="user-menu-dropdown">
+                {% if g.current_user.is_admin %}
+                <div class="user-menu-section">Admin</div>
+                <a href="{{ url_for('admin_users') }}" class="user-menu-item">Users</a>
+                <a href="{{ url_for('admin_backups') }}" class="user-menu-item">Backups</a>
+                <div class="user-menu-divider"></div>
+                {% endif %}
+                {% if single_user_mode %}
+                <button type="button" class="user-menu-item user-menu-item-btn" disabled>Sign out</button>
+                {% else %}
+                <form method="post" action="{{ url_for('logout') }}">
+                    <button type="submit" class="user-menu-item user-menu-item-btn">Sign out</button>
+                </form>
+                {% endif %}
+            </div>
         </div>
+        <script>
+            (function() {
+                var menu = document.getElementById('userMenu');
+                var trigger = document.getElementById('userMenuTrigger');
+                trigger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    menu.classList.toggle('open');
+                });
+                document.addEventListener('click', function() {
+                    menu.classList.remove('open');
+                });
+            })();
+        </script>
         {% endif %}
     </header>
     <main>

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Load .env if present so POSTGRES_* vars are available
-[ -f src/docker/.env ] && set -a && . ./src/docker/.env && set +a
-docker compose -f src/docker/docker-compose.yml -p vibevocab \
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+[ -f "$ROOT/src/docker/.env" ] && set -a && . "$ROOT/src/docker/.env" && set +a
+docker compose -f "$ROOT/src/docker/docker-compose.yml" -p "${COMPOSE_PROJECT_NAME:-vibevocab}" \
     exec db psql \
         -U "${POSTGRES_USER:-vibevocab}" \
         -d "${POSTGRES_DB:-vibevocab}"
