@@ -160,3 +160,11 @@ CREATE TABLE review_log (
     was_overridden   BOOLEAN     NOT NULL DEFAULT FALSE,
     reviewed_at      TIMESTAMP   NOT NULL DEFAULT NOW()
 );
+
+-- Schema version history. Version 0 = baseline (this file).
+-- Patches in src/sql/patches/ are applied at startup and recorded here.
+CREATE TABLE schema_versions (
+    version    INTEGER      PRIMARY KEY,
+    applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+INSERT INTO schema_versions (version) VALUES (0);

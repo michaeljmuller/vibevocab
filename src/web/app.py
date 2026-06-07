@@ -6,6 +6,7 @@ import types
 import threading
 import subprocess
 import tempfile
+import pathlib
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
 from sqlalchemy import text
@@ -21,6 +22,24 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
 db.init_app(app)
+
+def _apply_patches():
+    patches_dir = pathlib.Path('/patches')
+    if not patches_dir.exists():
+        return
+    with app.app_context():
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT pg_advisory_lock(8675309)"))
+            applied = {row[0] for row in conn.execute(text("SELECT version FROM schema_versions"))}
+            for path in sorted(patches_dir.glob('*.sql')):
+                version = int(path.stem.split('_')[0])
+                if version not in applied:
+                    app.logger.info('Applying schema patch %d: %s', version, path.name)
+                    conn.execute(text(path.read_text()))
+                    conn.execute(text("INSERT INTO schema_versions (version) VALUES (:v)"), {'v': version})
+                    conn.commit()
+
+_apply_patches()
 
 @db.event.listens_for(db.session, 'before_commit')
 def _mark_db_modified(session):

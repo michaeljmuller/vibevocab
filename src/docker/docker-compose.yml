@@ -56,6 +56,7 @@ services:
     volumes:
       - ${WEB_DIR:-../../src/web}:/app
       - ../../prompts:/prompts:ro
+      - ../../src/sql/patches:/patches:ro
     ports:
       - "${APP_PORT:-5001}:5000"
     depends_on:
