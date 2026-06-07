@@ -9,8 +9,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vibevocab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
     volumes:
-      - ../../src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ${DB_DIR:-../../db}:/var/lib/postgresql/data
+      - ../../src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:z
+      - ${DB_DIR:-../../db}:/var/lib/postgresql/data:z
     ports:
       - "5432:5432"
     healthcheck:
@@ -56,9 +56,9 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
       S3_REGION: ${S3_REGION:-}
     volumes:
-      - ${WEB_DIR:-../../src/web}:/app
-      - ../../prompts:/prompts:ro
-      - ../../src/sql/patches:/patches:ro
+      - ${WEB_DIR:-../../src/web}:/app:z
+      - ../../prompts:/prompts:ro,z
+      - ../../src/sql/patches:/patches:ro,z
     ports:
       - "${APP_PORT:-5001}:5000"
     depends_on:
@@ -80,7 +80,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_REGION: ${S3_REGION:-}
     volumes:
-      - ../../src/scripts/watcher.sh:/watcher.sh:ro
+      - ../../src/scripts/watcher.sh:/watcher.sh:ro,z
     depends_on:
       db:
         condition: service_healthy

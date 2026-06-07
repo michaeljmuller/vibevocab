@@ -1,7 +1,7 @@
 VibeVocab Setup
 ===============
 
-Prerequisite: Docker (everything else runs in containers)
+Prerequisite: Docker (or Podman — see note below)
 
 
 1. Clone the repo and enter the directory.
@@ -13,8 +13,8 @@ Prerequisite: Docker (everything else runs in containers)
    Edit src/docker/.env and fill in at minimum:
 
    - Authentication: set SINGLE_USER=your@email.com for single-user mode, OR
-     provide GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google OAuth
-     (see .env.example for instructions on creating OAuth credentials).
+     provide GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and BOOTSTRAP_USER for
+     Google OAuth (see .env.example for instructions on creating OAuth credentials).
 
    - LLM: set LLM_API_KEY for AI-generated examples. Defaults to OpenAI
      (gpt-4o-mini). For Anthropic, also set LLM_PROVIDER=anthropic. For local
@@ -28,8 +28,8 @@ Prerequisite: Docker (everything else runs in containers)
      docker compose -f src/docker/docker-compose.yml up   # from project root
      # or: cd src/docker && docker compose up
 
-   On first start, Docker creates the db/ and backups/ directories and loads
-   the database schema automatically. No manual setup needed.
+   On first start, the database schema is created automatically. No manual
+   setup needed.
 
 4. Open http://localhost:5001 (or the port set by APP_PORT in your .env)
 
@@ -37,3 +37,15 @@ Prerequisite: Docker (everything else runs in containers)
 Utility scripts
 ---------------
 utils/db-shell.sh    Open a psql shell to the running database
+
+
+Podman
+------
+Podman can be used in place of Docker. Set DOCKER=podman in your environment
+(or in src/docker/.env) so the utility scripts use the right command:
+
+  export DOCKER=podman
+  podman compose -f src/docker/docker-compose.yml up
+
+If using a local Ollama instance, use host.containers.internal instead of
+host.docker.internal in LLM_BASE_URL.
