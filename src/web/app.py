@@ -28,8 +28,8 @@ def _apply_patches():
     if not patches_dir.exists():
         return
     with app.app_context():
-        with db.engine.connect() as conn:
-            conn.execute(text("SELECT pg_advisory_lock(8675309)"))
+        with db.engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(8675309)"))
             applied = {row[0] for row in conn.execute(text("SELECT version FROM schema_versions"))}
             for path in sorted(patches_dir.glob('*.sql')):
                 version = int(path.stem.split('_')[0])
@@ -37,7 +37,7 @@ def _apply_patches():
                     app.logger.info('Applying schema patch %d: %s', version, path.name)
                     conn.execute(text(path.read_text()))
                     conn.execute(text("INSERT INTO schema_versions (version) VALUES (:v)"), {'v': version})
-                    conn.commit()
+            # single commit at end releases the lock
 
 _apply_patches()
 
