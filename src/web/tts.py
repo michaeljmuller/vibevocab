@@ -4,18 +4,10 @@ TTS abstraction for generating audio clips.
 Supported providers (set via TTS_PROVIDER env var):
   elevenlabs — ElevenLabs (default)
 
-Env vars (all per-deck settings can be overridden via deck columns):
+Env vars:
   TTS_PROVIDER      elevenlabs              (default: elevenlabs)
   ELEVENLABS_API_KEY
   TTS_MODEL         model ID                (default: eleven_multilingual_v2)
-
-Per-deck settings (fall back to env vars if not provided):
-  TTS_VOICE_ID      ElevenLabs voice ID     (find at elevenlabs.io/voice-library)
-  TTS_SPEED         speaking rate           (default: 1.0)
-  TTS_STABILITY     stability 0–1           (default: 0.48)
-  TTS_SIMILARITY    similarity boost 0–1    (default: 0.75)
-  TTS_STYLE         style exaggeration 0–1  (default: 0.08)
-  TTS_SPEAKER_BOOST true | false            (default: true)
 
 Output is always mono MP3 at 22 050 Hz / 32 kbps.
 """
@@ -25,10 +17,7 @@ import os
 
 def generate_audio(text: str, *, voice_id=None, speed=None, stability=None,
                    similarity=None, style=None, speaker_boost=None) -> bytes:
-    """Generate TTS audio for text. Returns raw MP3 bytes.
-
-    Per-deck keyword args override env var defaults when provided.
-    """
+    """Generate TTS audio for text. Returns raw MP3 bytes."""
     provider = os.environ.get('TTS_PROVIDER', 'elevenlabs').lower()
     if provider == 'elevenlabs':
         return _elevenlabs(text, voice_id=voice_id, speed=speed,
@@ -43,12 +32,11 @@ def _elevenlabs(text: str, *, voice_id, speed, stability, similarity, style, spe
 
     api_key = os.environ.get('ELEVENLABS_API_KEY', '')
 
-    voice_id      = voice_id      if voice_id      is not None else os.environ.get('TTS_VOICE_ID')
-    speed         = speed         if speed         is not None else float(os.environ.get('TTS_SPEED',      '1.0'))
-    stability     = stability     if stability     is not None else float(os.environ.get('TTS_STABILITY',  '0.48'))
-    similarity    = similarity    if similarity    is not None else float(os.environ.get('TTS_SIMILARITY', '0.75'))
-    style         = style         if style         is not None else float(os.environ.get('TTS_STYLE',      '0.08'))
-    speaker_boost = speaker_boost if speaker_boost is not None else (os.environ.get('TTS_SPEAKER_BOOST', 'true').lower() != 'false')
+    speed         = speed         if speed         is not None else 1.0
+    stability     = stability     if stability     is not None else 0.48
+    similarity    = similarity    if similarity    is not None else 0.75
+    style         = style         if style         is not None else 0.08
+    speaker_boost = speaker_boost if speaker_boost is not None else True
 
     if not voice_id:
         raise RuntimeError('No TTS voice configured for this deck')
