@@ -537,8 +537,7 @@ def admin_backups_restore():
         db.engine.dispose()
         subprocess.run(
             ['psql', '-h', db_host, '-p', db_port, '-U', db_user, 'postgres',
-             '-c', f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid()",
-             '-c', f'DROP DATABASE IF EXISTS "{db_name}"',
+             '-c', f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)',
              '-c', f'CREATE DATABASE "{db_name}"'],
             env=pg_env, check=True,
         )
