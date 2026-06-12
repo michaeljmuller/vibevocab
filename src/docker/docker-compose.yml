@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
     volumes:
       - ../../src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:z
-      - ${DB_DIR:-../../db}:/var/lib/postgresql/data:z
+      - ${DB_DIR:-../../volumes/db}:/var/lib/postgresql/data:z
     ports:
       - "5432:5432"
     healthcheck:
@@ -20,7 +20,7 @@ services:
       retries: 10
 
   web:
-    build: ${WEB_DIR:-../../src/web}
+    build: ${WEB_DIR:-./images/web}
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -50,8 +50,8 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
       S3_REGION: ${S3_REGION:-}
     volumes:
-      - ${WEB_DIR:-../../src/web}:/app:z
-      - ../../prompts:/prompts:ro,z
+      - ${WEB_DIR:-./images/web}:/app:z
+      - ../../volumes/prompts:/prompts:ro,z
       - ../../src/sql/patches:/patches:ro,z
     ports:
       - "${APP_PORT:-5001}:5000"
@@ -60,7 +60,7 @@ services:
         condition: service_healthy
 
   backup:
-    build: ./images/database
+    build: ./images/backup
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-vibevocab}
       PGUSER: ${POSTGRES_USER:-vibevocab}

@@ -1,6 +1,6 @@
 .playwright-mcp/
 backups/
-db/
+volumes/db/
 
 # Python
 __pycache__/

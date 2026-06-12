@@ -13,3 +13,4 @@
 - it's visually incongruous to have the dimension of the tags not match the status/score.
 - does the baseline of the "edit" button align with the text of source/target/etc?
 - can we tighten up the list a little, place the rows closer together?
+
