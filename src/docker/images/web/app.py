@@ -9,11 +9,13 @@ import tempfile
 import pathlib
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, url_for, request, abort, jsonify, Response, make_response, session, g
+from werkzeug.middleware.proxy_fix import ProxyFix
 from sqlalchemy import text
 from models import db, User, Deck, DeckShare, Card, Tag, StudySet, CardProgress, ReviewLog, DbState, ElevenLabsVoice
 from srs import sm2, quality_from_result, familiarity_label
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
     f"@{os.environ['DB_HOST']}:{os.environ.get('DB_PORT', '5432')}/{os.environ['DB_NAME']}"
@@ -156,6 +158,9 @@ google = oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'},
 )
+
+if not _SINGLE_USER_EMAIL and not (os.environ.get('GOOGLE_CLIENT_ID') and os.environ.get('GOOGLE_CLIENT_SECRET')):
+    sys.exit("ERROR: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set when SINGLE_USER is not configured.")
 
 _PUBLIC_ENDPOINTS = {
     'login', 'auth_google', 'auth_google_callback', 'last_interaction', 'static',
