@@ -534,6 +534,7 @@ def admin_backups_restore():
         with tempfile.NamedTemporaryFile(suffix='.sql', delete=False) as f:
             restore_path = f.name
         s3.download_file(bucket, key, restore_path)
+        db.session.close()
         db.engine.dispose()
         subprocess.run(
             ['psql', '-h', db_host, '-p', db_port, '-U', db_user, 'postgres',
