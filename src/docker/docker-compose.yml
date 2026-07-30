@@ -4,6 +4,7 @@ services:
 
   db:
     image: postgres:${PG_VERSION:-16}
+    restart: ${RESTART_POLICY:-unless-stopped}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vibevocab}
       POSTGRES_USER: ${POSTGRES_USER:-vibevocab}
@@ -21,6 +22,7 @@ services:
 
   web:
     build: ${WEB_DIR:-./images/web}
+    restart: ${RESTART_POLICY:-unless-stopped}
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -82,4 +84,4 @@ services:
       db:
         condition: service_healthy
     command: bash /watcher.sh
-    restart: unless-stopped
+    restart: ${RESTART_POLICY:-unless-stopped}
